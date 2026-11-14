@@ -17,6 +17,7 @@ from plate_vision.detection.models import (
     YoloBackendProtocol,
 )
 from plate_vision.utils.exceptions import DataIOError, DatasetValidationError, ModelLoadError
+from plate_vision.utils.tracking import ExperimentTrackerProtocol, compute_dataset_version_hash
 
 
 def compute_detector_lr(epoch: int, config: DetectorConfig) -> float:
@@ -194,21 +195,33 @@ class DetectorTrainer:
         config: DetectorConfig,
         backend: YoloBackendProtocol | None = None,
         seed: int = 42,
+        tracker: ExperimentTrackerProtocol | None = None,
     ) -> None:
         self.config = config
         self.backend: YoloBackendProtocol = (
             backend if backend is not None else UltralyticsYoloBackend(seed=seed)
         )
+        self.tracker = tracker
 
     def train(
         self,
         dataset_yaml: Path,
         output_dir: Path,
         resume_from: Path | None = None,
+        run_name: str = "detector-train",
     ) -> DetectorTrainingSummary:
         output_dir.mkdir(parents=True, exist_ok=True)
         best_ckpt_path = output_dir / "best.ckpt.json"
         last_ckpt_path = output_dir / "last.ckpt.json"
+
+        if self.tracker is not None:
+            ds_version = (
+                compute_dataset_version_hash(dataset_yaml)
+                if dataset_yaml.exists()
+                else "unversioned"
+            )
+            self.tracker.start_run(run_name, tags={"dataset_version": ds_version})
+            self.tracker.log_params(self.config.model_dump())
 
         start_epoch = 1
         best_fitness = -1.0
@@ -237,6 +250,17 @@ class DetectorTrainer:
             )
             history.append(val_metrics)
             current_fitness = val_metrics.fitness
+            if self.tracker is not None:
+                self.tracker.log_metrics(
+                    {
+                        "val_precision": val_metrics.precision,
+                        "val_recall": val_metrics.recall,
+                        "val_map50": val_metrics.map50,
+                        "val_map50_95": val_metrics.map50_95,
+                        "learning_rate": lr,
+                    },
+                    step=epoch,
+                )
 
             if current_fitness > best_fitness + 1e-6:
                 best_fitness = current_fitness
@@ -284,6 +308,19 @@ class DetectorTrainer:
             split="test",
             config=self.config,
         )
+        if self.tracker is not None:
+            self.tracker.log_metrics(
+                {
+                    "test_precision": test_metrics.precision,
+                    "test_recall": test_metrics.recall,
+                    "test_map50": test_metrics.map50,
+                    "test_map50_95": test_metrics.map50_95,
+                },
+                step=len(history),
+            )
+            self.tracker.log_artifact(best_ckpt_path)
+            self.tracker.log_artifact(last_ckpt_path)
+            self.tracker.end_run()
 
         return DetectorTrainingSummary(
             epochs_completed=len(history),

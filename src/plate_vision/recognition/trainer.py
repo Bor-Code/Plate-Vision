@@ -12,6 +12,7 @@ from plate_vision.recognition.dataset import RecognizerDataset, SeededDataLoader
 from plate_vision.recognition.decoding import ctc_beam_search_decode, log_softmax_row
 from plate_vision.recognition.model import CRNNModel
 from plate_vision.utils.exceptions import DataIOError, ModelLoadError
+from plate_vision.utils.tracking import ExperimentTrackerProtocol, compute_dataset_version_hash
 
 
 class RecognizerEpochMetrics(BaseModel):
@@ -203,12 +204,14 @@ class RecognizerTrainer:
         config: RecognizerConfig,
         encoder: CharsetEncoder | None = None,
         seed: int = 42,
+        tracker: ExperimentTrackerProtocol | None = None,
     ) -> None:
         self.config = config
         self.encoder = encoder if encoder is not None else CharsetEncoder()
         self.seed = seed
         self.model = CRNNModel(config=config, encoder=self.encoder, seed=seed)
         self.scaler = AmpGradScaler(enabled=config.mixed_precision)
+        self.tracker = tracker
 
     def evaluate_dataset(
         self,
@@ -263,6 +266,11 @@ class RecognizerTrainer:
         best_ckpt_path = output_dir / "best.ckpt.json"
         last_ckpt_path = output_dir / "last.ckpt.json"
 
+        if self.tracker is not None:
+            ds_version = compute_dataset_version_hash(train_dataset.manifest_path)
+            self.tracker.start_run("recognizer-train", tags={"dataset_version": ds_version})
+            self.tracker.log_params(self.config.model_dump())
+
         start_epoch = 1
         best_score = -1e9
         best_epoch = 1
@@ -313,6 +321,18 @@ class RecognizerTrainer:
             )
             history.append(val_metrics)
             score = val_metrics.exact_match_accuracy - val_metrics.character_error_rate
+            if self.tracker is not None:
+                self.tracker.log_metrics(
+                    {
+                        "train_loss": val_metrics.train_loss,
+                        "val_loss": val_metrics.val_loss,
+                        "exact_match_accuracy": val_metrics.exact_match_accuracy,
+                        "character_error_rate": val_metrics.character_error_rate,
+                        "positional_accuracy": val_metrics.positional_accuracy,
+                        "learning_rate": lr,
+                    },
+                    step=epoch,
+                )
 
             charset_str = "".join(self.encoder.characters)
             if score > best_score + 1e-6 or best_metrics is None:
@@ -361,6 +381,18 @@ class RecognizerTrainer:
             train_loss=best_metrics.train_loss,
             learning_rate=best_metrics.learning_rate,
         )
+        if self.tracker is not None:
+            self.tracker.log_metrics(
+                {
+                    "test_exact_match_accuracy": test_metrics.exact_match_accuracy,
+                    "test_character_error_rate": test_metrics.character_error_rate,
+                    "test_positional_accuracy": test_metrics.positional_accuracy,
+                },
+                step=len(history),
+            )
+            self.tracker.log_artifact(best_ckpt_path)
+            self.tracker.log_artifact(last_ckpt_path)
+            self.tracker.end_run()
 
         return RecognizerTrainingSummary(
             epochs_completed=len(history),
