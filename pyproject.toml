@@ -16,6 +16,9 @@ dependencies = [
     "structlog>=24.4.0,<26.0.0",
 ]
 
+[project.scripts]
+train_detector = "plate_vision.detection.cli:main"
+
 [dependency-groups]
 dev = [
     "mypy>=1.13.0,<2.0.0",
