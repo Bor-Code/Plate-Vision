@@ -6,6 +6,7 @@ from plate_vision.config import DetectorConfig, load_component_config
 from plate_vision.detection.models import DetectorTrainingSummary
 from plate_vision.detection.trainer import DetectorTrainer
 from plate_vision.utils.logging import configure_logging, get_logger, log_environment_info
+from plate_vision.utils.tracking import MlflowExperimentTracker
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=42,
         help="Deterministic random seed",
     )
+    parser.add_argument(
+        "--tracking-dir",
+        type=Path,
+        default=None,
+        help="Optional MLflow tracking directory",
+    )
     return parser
 
 
@@ -49,10 +56,20 @@ def run_train_detector(argv: Sequence[str] | None = None) -> DetectorTrainingSum
 
     configure_logging(level="INFO", json_format=True, service_name="train-detector")
     logger = get_logger("plate_vision.detection.cli")
-    log_environment_info(logger, seed=int(args.seed))
+    seed = int(args.seed)
+    log_environment_info(logger, seed=seed)
 
     config = load_component_config(Path(args.config), DetectorConfig)
-    trainer = DetectorTrainer(config=config, seed=int(args.seed))
+    tracker = (
+        MlflowExperimentTracker(
+            tracking_dir=Path(args.tracking_dir),
+            experiment_name="detector",
+            seed=seed,
+        )
+        if args.tracking_dir is not None
+        else None
+    )
+    trainer = DetectorTrainer(config=config, seed=seed, tracker=tracker)
 
     summary = trainer.train(
         dataset_yaml=Path(args.dataset_yaml),

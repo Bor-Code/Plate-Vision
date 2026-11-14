@@ -7,6 +7,7 @@ from plate_vision.recognition.charset import CharsetEncoder
 from plate_vision.recognition.dataset import RecognizerDataset
 from plate_vision.recognition.trainer import RecognizerTrainer, RecognizerTrainingSummary
 from plate_vision.utils.logging import configure_logging, get_logger, log_environment_info
+from plate_vision.utils.tracking import MlflowExperimentTracker
 
 
 def build_recognizer_parser() -> argparse.ArgumentParser:
@@ -41,6 +42,12 @@ def build_recognizer_parser() -> argparse.ArgumentParser:
         default=42,
         help="Deterministic random seed",
     )
+    parser.add_argument(
+        "--tracking-dir",
+        type=Path,
+        default=None,
+        help="Optional MLflow tracking directory",
+    )
     return parser
 
 
@@ -73,7 +80,20 @@ def run_train_recognizer(argv: Sequence[str] | None = None) -> RecognizerTrainin
         seed=seed,
     )
 
-    trainer = RecognizerTrainer(config=config, encoder=encoder, seed=seed)
+    trainer = RecognizerTrainer(
+        config=config,
+        encoder=encoder,
+        seed=seed,
+        tracker=(
+            MlflowExperimentTracker(
+                tracking_dir=Path(args.tracking_dir),
+                experiment_name="recognizer",
+                seed=seed,
+            )
+            if args.tracking_dir is not None
+            else None
+        ),
+    )
     output_dir = Path(args.output_dir)
     summary = trainer.train(
         train_dataset=train_dataset,
