@@ -1,3 +1,4 @@
+from plate_vision.data.augmentation import AugmentationConfig, AugmentationPipeline
 from plate_vision.data.deduplication import deduplicate_records
 from plate_vision.data.exporters import export_recognizer_manifests, export_yolo_dataset
 from plate_vision.data.ingestion import (
@@ -20,14 +21,43 @@ from plate_vision.data.models import (
     PlateAnnotation,
     SplitDataset,
 )
+from plate_vision.data.profiles import (
+    TURKEY_ALPHA_TO_DIGIT,
+    TURKEY_CHARSET,
+    TURKEY_DIGIT_TO_ALPHA,
+    TURKEY_PATTERNS,
+    CountryProfileProtocol,
+    CountryProfileRegistry,
+    TurkeyCountryProfile,
+    get_country_profile,
+    register_country_profile,
+)
 from plate_vision.data.splitter import (
     allocate_stratum_counts,
     stratified_split,
     verify_no_split_leakage,
 )
+from plate_vision.data.synthetic import (
+    GLYPH_BITMAPS,
+    SyntheticPlateConfig,
+    apply_synthetic_effects,
+    encode_grayscale_png,
+    generate_synthetic_dataset,
+    generate_synthetic_sample,
+    render_plate_canvas,
+)
 
 __all__ = [
+    "GLYPH_BITMAPS",
+    "TURKEY_ALPHA_TO_DIGIT",
+    "TURKEY_CHARSET",
+    "TURKEY_DIGIT_TO_ALPHA",
+    "TURKEY_PATTERNS",
+    "AugmentationConfig",
+    "AugmentationPipeline",
     "BoundingBox",
+    "CountryProfileProtocol",
+    "CountryProfileRegistry",
     "DatasetRecord",
     "DatasetSplit",
     "DatasetStorageProtocol",
@@ -36,16 +66,25 @@ __all__ = [
     "LocalFileStorage",
     "PlateAnnotation",
     "SplitDataset",
+    "SyntheticPlateConfig",
+    "TurkeyCountryProfile",
     "allocate_stratum_counts",
+    "apply_synthetic_effects",
     "deduplicate_records",
     "derive_stratum_key",
+    "encode_grayscale_png",
     "export_recognizer_manifests",
     "export_yolo_dataset",
+    "generate_synthetic_dataset",
+    "generate_synthetic_sample",
+    "get_country_profile",
     "ingest_manifest_records",
     "inspect_image_bytes",
     "parse_jpeg_dimensions",
     "parse_png_dimensions",
     "parse_webp_dimensions",
+    "register_country_profile",
+    "render_plate_canvas",
     "stratified_split",
     "validate_record_annotations",
     "verify_no_split_leakage",
