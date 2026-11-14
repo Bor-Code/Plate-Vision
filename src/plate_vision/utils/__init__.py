@@ -17,6 +17,12 @@ from plate_vision.utils.logging import (
     get_logger,
     log_environment_info,
 )
+from plate_vision.utils.tracking import (
+    ExperimentTrackerProtocol,
+    MlflowExperimentTracker,
+    compute_dataset_version_hash,
+    resolve_git_commit_hash,
+)
 
 __all__ = [
     "ConfigurationError",
@@ -24,14 +30,18 @@ __all__ = [
     "DataIOError",
     "DatasetValidationError",
     "EmptyDetectionError",
+    "ExperimentTrackerProtocol",
     "InferenceTimeoutError",
     "InvalidInputError",
+    "MlflowExperimentTracker",
     "ModelLoadError",
     "PlateVisionError",
     "bind_context",
     "clear_context",
     "collect_environment_info",
+    "compute_dataset_version_hash",
     "configure_logging",
     "get_logger",
     "log_environment_info",
+    "resolve_git_commit_hash",
 ]
