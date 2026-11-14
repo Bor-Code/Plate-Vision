@@ -14,3 +14,25 @@ Stage 2 of `plate-vision` transcribes character sequences from rectified license
 4. **Dataset and Seeded DataLoader (`plate_vision.recognition.dataset`)**:
    - `RecognizerDataset` loads exported JSONL manifests, decodes PNG crops, encodes target labels, and applies optional training augmentations.
    - `SeededDataLoader` provides deterministic epoch-seeded shuffling and batch iteration.
+
+## Training Loop and Evaluation Metrics
+
+`RecognizerTrainer` (`plate_vision.recognition.trainer`) manages CRNN optimization:
+
+- **Mixed Precision (`AmpGradScaler`)**: Dynamically scales loss gradients and adjusts scale factor on overflow/underflow.
+- **Gradient Clipping and Scheduling**: Clips gradient norms (`grad_clip_norm`) and schedules learning rate with linear warmup and cosine decay (`compute_recognizer_lr`).
+- **Evaluation Metrics (`compute_recognizer_metrics`)**:
+  - `exact_match_accuracy`: Plate-level exact string match ratio.
+  - `character_error_rate`: Levenshtein edit distance divided by total ground-truth characters.
+  - `positional_accuracy`: Character match accuracy at corresponding indices.
+- **Checkpointing and Resume**: Persists `best.ckpt.json` and `last.ckpt.json` and supports resuming from any saved checkpoint via `--resume-from`.
+
+## CLI Usage
+
+```bash
+uv run train_recognizer \
+  --config configs/recognition/default.yaml \
+  --manifest-dir data/processed/recognizer \
+  --output-dir checkpoints/recognizer \
+  --seed 42
+```
