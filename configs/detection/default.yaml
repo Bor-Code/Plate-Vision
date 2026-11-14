@@ -1,0 +1,13 @@
+model_architecture: yolo11n.pt
+input_size: 640
+confidence_threshold: 0.25
+iou_threshold: 0.45
+max_detections: 10
+epochs: 50
+batch_size: 16
+learning_rate: 0.001
+weight_decay: 0.0005
+warmup_epochs: 3
+early_stopping_patience: 10
+mixed_precision: true
+device: cpu

@@ -1,0 +1,16 @@
+image_height: 32
+image_width: 128
+num_channels: 1
+hidden_size: 256
+num_lstm_layers: 2
+dropout: 0.2
+beam_width: 5
+epochs: 60
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+grad_clip_norm: 5.0
+warmup_epochs: 5
+early_stopping_patience: 10
+mixed_precision: true
+device: cpu
