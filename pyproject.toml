@@ -9,7 +9,12 @@ description = "End-to-end production automatic license plate recognition system"
 requires-python = ">=3.11,<3.12"
 license = { file = "LICENSE" }
 authors = [{ name = "Plate-Vision Contributors" }]
-dependencies = []
+dependencies = [
+    "pydantic>=2.10.0,<3.0.0",
+    "pydantic-settings>=2.6.0,<3.0.0",
+    "pyyaml>=6.0.2,<7.0.0",
+    "structlog>=24.4.0,<26.0.0",
+]
 
 [dependency-groups]
 dev = [
@@ -18,6 +23,7 @@ dev = [
     "pytest>=8.3.3,<9.0.0",
     "pytest-cov>=6.0.0,<7.0.0",
     "ruff>=0.8.0,<1.0.0",
+    "types-pyyaml>=6.0.12,<7.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
