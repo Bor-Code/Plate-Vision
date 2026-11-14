@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 train_detector = "plate_vision.detection.cli:main"
+train_recognizer = "plate_vision.recognition.cli:main"
 
 [dependency-groups]
 dev = [
