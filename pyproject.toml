@@ -1,0 +1,92 @@
+[build-system]
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "plate-vision"
+version = "0.1.0"
+description = "End-to-end production automatic license plate recognition system"
+requires-python = ">=3.11,<3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Plate-Vision Contributors" }]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13.0,<2.0.0",
+    "pre-commit>=4.0.1,<5.0.0",
+    "pytest>=8.3.3,<9.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "ruff>=0.8.0,<1.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plate_vision"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "A",
+    "C4",
+    "SIM",
+    "TCH",
+    "RUF",
+    "PT",
+    "RET",
+    "ARG",
+    "PTH",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["plate_vision"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+mypy_path = "src"
+packages = ["plate_vision", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=plate_vision",
+    "--cov-report=term-missing",
+    "--cov-fail-under=90",
+]
+
+[tool.coverage.run]
+source = ["src/plate_vision"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
