@@ -1,0 +1,14 @@
+stages:
+  prepare_dataset:
+    cmd: uv run python -m plate_vision.data.pipeline --config configs/data/default.yaml
+    deps:
+      - configs/data/default.yaml
+      - src/plate_vision/data/ingestion.py
+      - src/plate_vision/data/deduplication.py
+      - src/plate_vision/data/splitter.py
+      - src/plate_vision/data/exporters.py
+    outs:
+      - data/processed/yolo/dataset.yaml
+      - data/processed/recognizer/recognizer_train.jsonl
+      - data/processed/recognizer/recognizer_val.jsonl
+      - data/processed/recognizer/recognizer_test.jsonl
