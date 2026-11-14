@@ -34,3 +34,7 @@ uv run ruff format --check .
 uv run mypy src tests
 uv run pytest
 ```
+
+## Continuous Integration
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs on every push to `main` and every pull request targeting `main`. It provisions Python 3.11 via `astral-sh/setup-uv`, caches the `uv` environment keyed on `uv.lock`, installs locked development dependencies, executes `ruff check`, `ruff format --check`, `mypy src tests`, and `pytest` with coverage enforcement, and uploads `coverage.xml` as a build artifact.
