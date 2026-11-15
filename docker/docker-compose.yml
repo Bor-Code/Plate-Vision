@@ -1,0 +1,31 @@
+services:
+  plate-vision-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: plate-vision:latest
+    container_name: plate-vision-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PLATE_VISION_ENVIRONMENT: production
+      PLATE_VISION_LOGGING__LEVEL: INFO
+      PLATE_VISION_LOGGING__JSON_FORMAT: "true"
+      PLATE_VISION_SERVING__HOST: 0.0.0.0
+      PLATE_VISION_SERVING__PORT: "8000"
+      PLATE_VISION_SERVING__DETECTOR_ONNX_PATH: /app/artifacts/models/detector.onnx
+      PLATE_VISION_SERVING__RECOGNIZER_ONNX_PATH: /app/artifacts/models/recognizer.onnx
+    volumes:
+      - ../configs:/app/configs:ro
+      - ../artifacts:/app/artifacts:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
