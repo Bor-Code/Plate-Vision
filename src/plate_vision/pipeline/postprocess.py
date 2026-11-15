@@ -1,6 +1,13 @@
+from collections.abc import Sequence
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from plate_vision.data.profiles import CountryProfileProtocol, get_country_profile
+from plate_vision.data.profiles import (
+    CountryProfileProtocol,
+    CountryProfileRegistry,
+    get_country_profile,
+)
+from plate_vision.utils.exceptions import ConfigurationError
 
 
 class PostProcessedPlate(BaseModel):
@@ -34,7 +41,46 @@ def postprocess_plate_text(
     )
 
 
+class MultiCountryPostProcessor:
+    def __init__(
+        self,
+        country_codes: Sequence[str] = ("TR", "DE", "GB", "AZ"),
+        registry: CountryProfileRegistry | None = None,
+    ) -> None:
+        if not country_codes:
+            raise ConfigurationError("MultiCountryPostProcessor requires at least one country code")
+        self._profiles: list[CountryProfileProtocol] = []
+        for code in country_codes:
+            resolved = registry.get(code) if registry is not None else get_country_profile(code)
+            self._profiles.append(resolved)
+
+    @property
+    def country_codes(self) -> tuple[str, ...]:
+        return tuple(p.country_code for p in self._profiles)
+
+    def resolve(self, raw_text: str) -> PostProcessedPlate:
+        for profile in self._profiles:
+            normalized = profile.normalize(raw_text)
+            if profile.is_valid(normalized):
+                return PostProcessedPlate(
+                    raw_text=raw_text,
+                    normalized_text=normalized,
+                    corrected_text=normalized,
+                    country_code=profile.country_code,
+                    is_valid_format=True,
+                    was_corrected=False,
+                )
+
+        for profile in self._profiles:
+            candidate = postprocess_plate_text(raw_text, profile=profile)
+            if candidate.is_valid_format:
+                return candidate
+
+        return postprocess_plate_text(raw_text, profile=self._profiles[0])
+
+
 __all__ = [
+    "MultiCountryPostProcessor",
     "PostProcessedPlate",
     "postprocess_plate_text",
 ]
