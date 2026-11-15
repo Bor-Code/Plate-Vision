@@ -46,6 +46,9 @@ jobs:
       - name: Run pytest with coverage
         run: uv run pytest --cov=plate_vision --cov-report=term-missing --cov-report=xml
 
+      - name: Run container and service smoke test
+        run: uv run pytest tests/integration/test_container_smoke.py --no-cov
+
       - name: Upload coverage report artifact
         uses: actions/upload-artifact@v4
         with:
