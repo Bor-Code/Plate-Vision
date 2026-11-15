@@ -10,12 +10,20 @@ class SinglePredictRequest(BaseModel):
 
     image_base64: str = Field(min_length=1)
     mime_type: str = Field(default="image/png", min_length=1)
+    country_code: str | None = Field(default=None)
 
 
 class BatchPredictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     items: tuple[SinglePredictRequest, ...] = Field(min_length=1)
+
+
+class VideoPredictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    frames: tuple[SinglePredictRequest, ...] = Field(min_length=1)
+    fps: float = Field(default=30.0, gt=0.0)
 
 
 class BatchPredictResponse(BaseModel):
@@ -57,4 +65,5 @@ __all__ = [
     "ReadinessStatusResponse",
     "SinglePredictRequest",
     "StructuredErrorResponse",
+    "VideoPredictRequest",
 ]
