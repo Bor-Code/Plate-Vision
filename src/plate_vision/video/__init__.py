@@ -1,3 +1,9 @@
+from plate_vision.video.analytics import (
+    CalibrationZone,
+    TrackAnalyticsSummary,
+    TrafficAnalyticsReport,
+    VideoTrafficAnalyzer,
+)
 from plate_vision.video.processor import (
     VideoFrameInput,
     VideoFrameResult,
@@ -17,15 +23,19 @@ from plate_vision.video.voting import (
 )
 
 __all__ = [
+    "CalibrationZone",
     "MultiObjectTrackerProtocol",
     "PlateTracker",
     "StabilizedTrackPrediction",
     "TemporalVoter",
+    "TrackAnalyticsSummary",
     "TrackState",
     "TrackedPlateDetection",
+    "TrafficAnalyticsReport",
     "VideoFrameInput",
     "VideoFrameResult",
     "VideoStreamProcessor",
     "VideoStreamSummary",
+    "VideoTrafficAnalyzer",
     "VoteObservation",
 ]
