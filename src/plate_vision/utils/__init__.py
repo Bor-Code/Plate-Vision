@@ -17,6 +17,14 @@ from plate_vision.utils.logging import (
     get_logger,
     log_environment_info,
 )
+from plate_vision.utils.release import (
+    ChangelogSection,
+    SemanticVersion,
+    bump_semantic_version,
+    generate_changelog_markdown,
+    parse_semantic_version,
+    validate_release_tag,
+)
 from plate_vision.utils.tracking import (
     ExperimentTrackerProtocol,
     MlflowExperimentTracker,
@@ -25,6 +33,7 @@ from plate_vision.utils.tracking import (
 )
 
 __all__ = [
+    "ChangelogSection",
     "ConfigurationError",
     "CorruptedImageError",
     "DataIOError",
@@ -36,12 +45,17 @@ __all__ = [
     "MlflowExperimentTracker",
     "ModelLoadError",
     "PlateVisionError",
+    "SemanticVersion",
     "bind_context",
+    "bump_semantic_version",
     "clear_context",
     "collect_environment_info",
     "compute_dataset_version_hash",
     "configure_logging",
+    "generate_changelog_markdown",
     "get_logger",
     "log_environment_info",
+    "parse_semantic_version",
     "resolve_git_commit_hash",
+    "validate_release_tag",
 ]
