@@ -1,4 +1,8 @@
-from plate_vision.pipeline.postprocess import PostProcessedPlate, postprocess_plate_text
+from plate_vision.pipeline.postprocess import (
+    MultiCountryPostProcessor,
+    PostProcessedPlate,
+    postprocess_plate_text,
+)
 from plate_vision.pipeline.rectification import (
     Point2D,
     decode_image_to_grayscale,
@@ -13,6 +17,7 @@ from plate_vision.pipeline.runner import (
 )
 
 __all__ = [
+    "MultiCountryPostProcessor",
     "PipelineInferenceResult",
     "PlatePredictionResult",
     "PlateVisionPipeline",

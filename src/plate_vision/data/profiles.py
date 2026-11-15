@@ -33,6 +33,19 @@ TURKEY_PATTERNS: Final[tuple[Pattern[str], ...]] = (
     re.compile(r"^(0[1-9]|[1-7][0-9]|8[01])([A-PR-VYZ]{3})([0-9]{2,3})$"),
 )
 
+STANDARD_LATIN_CHARSET: Final[str] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+STANDARD_LETTERS: Final[str] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+GERMANY_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{2,5})([1-9][0-9]{0,3})$"),
+)
+
+UK_PATTERNS: Final[tuple[Pattern[str], ...]] = (re.compile(r"^([A-Z]{2})([0-9]{2})([A-Z]{3})$"),)
+
+AZERBAIJAN_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^(0[1-9]|[1-9][0-9])([A-Z]{2})([0-9]{3})$"),
+)
+
 
 class CountryProfileProtocol(Protocol):
     @property
@@ -162,6 +175,186 @@ class TurkeyCountryProfile:
         return f"{province}{letters}{digits}"
 
 
+class GermanyCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "DE"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return GERMANY_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        if len(normalized) < 3 or len(normalized) > 8:
+            return False
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized):
+            return normalized
+        length = len(normalized)
+        if length < 3 or length > 8:
+            return normalized
+
+        best_candidate: str | None = None
+        best_edits = length + 1
+        for alpha_len in range(2, min(5, length - 1) + 1):
+            digit_len = length - alpha_len
+            if digit_len < 1 or digit_len > 4:
+                continue
+            alpha_part = normalized[:alpha_len]
+            digit_part = normalized[alpha_len:]
+            fixed_a: list[str] = []
+            edits = 0
+            for ch in alpha_part:
+                if ch in STANDARD_LETTERS:
+                    fixed_a.append(ch)
+                elif ch in self.digit_to_alpha_map:
+                    fixed_a.append(self.digit_to_alpha_map[ch])
+                    edits += 1
+                else:
+                    fixed_a.append(ch)
+            fixed_d: list[str] = []
+            for ch in digit_part:
+                if ch.isdigit():
+                    fixed_d.append(ch)
+                elif ch in self.alpha_to_digit_map:
+                    fixed_d.append(self.alpha_to_digit_map[ch])
+                    edits += 1
+                else:
+                    fixed_d.append(ch)
+            candidate = "".join(fixed_a) + "".join(fixed_d)
+            if self.is_valid(candidate) and edits < best_edits:
+                best_candidate = candidate
+                best_edits = edits
+        return best_candidate if best_candidate is not None else normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        city_len = rng.choice((1, 2, 3))
+        mid_len = rng.choice((1, 2))
+        letters = "".join(rng.choice(STANDARD_LETTERS) for _ in range(city_len + mid_len))
+        num = rng.randint(1, 9999)
+        return f"{letters}{num}"
+
+
+class UnitedKingdomCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "GB"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return UK_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 7:
+            return normalized
+        chars = list(normalized)
+        for idx in (0, 1, 4, 5, 6):
+            if chars[idx] in self.digit_to_alpha_map:
+                chars[idx] = self.digit_to_alpha_map[chars[idx]]
+        for idx in (2, 3):
+            if chars[idx] in self.alpha_to_digit_map:
+                chars[idx] = self.alpha_to_digit_map[chars[idx]]
+        candidate = "".join(chars)
+        return candidate if self.is_valid(candidate) else normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        area = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        age = f"{rng.randint(10, 74):02d}"
+        suffix = "".join(rng.choice(STANDARD_LETTERS) for _ in range(3))
+        return f"{area}{age}{suffix}"
+
+
+class AzerbaijanCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "AZ"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return AZERBAIJAN_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 7:
+            return normalized
+        chars = list(normalized)
+        for idx in (0, 1, 4, 5, 6):
+            if chars[idx] in self.alpha_to_digit_map:
+                chars[idx] = self.alpha_to_digit_map[chars[idx]]
+        for idx in (2, 3):
+            if chars[idx] in self.digit_to_alpha_map:
+                chars[idx] = self.digit_to_alpha_map[chars[idx]]
+        candidate = "".join(chars)
+        return candidate if self.is_valid(candidate) else normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        region = f"{rng.randint(1, 99):02d}"
+        letters = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        digits = f"{rng.randint(100, 999)}"
+        return f"{region}{letters}{digits}"
+
+
 class CountryProfileRegistry:
     def __init__(self) -> None:
         self._profiles: dict[str, CountryProfileProtocol] = {}
@@ -188,6 +381,9 @@ class CountryProfileRegistry:
 
 DEFAULT_PROFILE_REGISTRY: Final[CountryProfileRegistry] = CountryProfileRegistry()
 DEFAULT_PROFILE_REGISTRY.register(TurkeyCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(GermanyCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(UnitedKingdomCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(AzerbaijanCountryProfile())
 
 
 def register_country_profile(profile: CountryProfileProtocol) -> None:
@@ -199,13 +395,20 @@ def get_country_profile(country_code: str) -> CountryProfileProtocol:
 
 
 __all__ = [
+    "AZERBAIJAN_PATTERNS",
+    "GERMANY_PATTERNS",
+    "STANDARD_LATIN_CHARSET",
     "TURKEY_ALPHA_TO_DIGIT",
     "TURKEY_CHARSET",
     "TURKEY_DIGIT_TO_ALPHA",
     "TURKEY_PATTERNS",
+    "UK_PATTERNS",
+    "AzerbaijanCountryProfile",
     "CountryProfileProtocol",
     "CountryProfileRegistry",
+    "GermanyCountryProfile",
     "TurkeyCountryProfile",
+    "UnitedKingdomCountryProfile",
     "get_country_profile",
     "register_country_profile",
 ]
