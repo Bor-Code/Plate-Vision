@@ -13,17 +13,23 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from plate_vision import __version__
 from plate_vision.config.schema import ServingConfig
 from plate_vision.data.profiles import get_country_profile
+from plate_vision.evaluation.monitoring import DriftDetector, DriftReport
 from plate_vision.export.runtime import OnnxDetectorRuntime, OnnxRecognizerRuntime
 from plate_vision.pipeline.runner import PipelineInferenceResult, PlateVisionPipeline
+from plate_vision.pipeline.watchlist import WatchlistMatcher
 from plate_vision.serving.metrics import PrometheusMetricsRegistry
 from plate_vision.serving.schemas import (
+    AuditLogResponse,
     BatchPredictRequest,
     BatchPredictResponse,
+    DriftEvaluationRequest,
     HealthStatusResponse,
     ReadinessStatusResponse,
     SinglePredictRequest,
     StructuredErrorResponse,
     VideoPredictRequest,
+    WatchlistCheckRequest,
+    WatchlistCheckResponse,
 )
 from plate_vision.serving.security import SlidingWindowRateLimiter, verify_api_key
 from plate_vision.utils.exceptions import (
@@ -33,6 +39,11 @@ from plate_vision.utils.exceptions import (
     InvalidInputError,
     ModelLoadError,
     PlateVisionError,
+)
+from plate_vision.utils.storage import (
+    InMemoryPredictionStore,
+    PredictionStorageProtocol,
+    build_audit_record,
 )
 from plate_vision.video.processor import (
     VideoFrameInput,
@@ -101,28 +112,59 @@ def _predict_bytes_with_optional_country(
     runner: PlateVisionPipeline,
     raw_bytes: bytes,
     country_code: str | None,
-) -> PipelineInferenceResult:
+) -> tuple[PipelineInferenceResult, bool]:
+    hits_before = runner.cache.hits if runner.cache is not None else 0
     if country_code is None:
-        return runner.predict_bytes(raw_bytes)
-    profile = get_country_profile(country_code)
-    scoped_runner = PlateVisionPipeline(
-        detector=runner.detector,
-        recognizer=runner.recognizer,
-        profile=profile,
-        max_payload_bytes=runner.max_payload_bytes,
-        timeout_seconds=runner.timeout_seconds,
-        min_plate_width=runner.min_plate_width,
-        min_plate_height=runner.min_plate_height,
-        target_crop_width=runner.target_crop_width,
-        target_crop_height=runner.target_crop_height,
-        confidence_threshold=runner.confidence_threshold,
-        iou_threshold=runner.iou_threshold,
-        max_detections=runner.max_detections,
-        require_detection=runner.require_detection,
-        use_beam_search=runner.use_beam_search,
-        clock=runner.clock,
+        result = runner.predict_bytes(raw_bytes)
+    else:
+        profile = get_country_profile(country_code)
+        scoped_runner = PlateVisionPipeline(
+            detector=runner.detector,
+            recognizer=runner.recognizer,
+            profile=profile,
+            max_payload_bytes=runner.max_payload_bytes,
+            timeout_seconds=runner.timeout_seconds,
+            min_plate_width=runner.min_plate_width,
+            min_plate_height=runner.min_plate_height,
+            target_crop_width=runner.target_crop_width,
+            target_crop_height=runner.target_crop_height,
+            confidence_threshold=runner.confidence_threshold,
+            iou_threshold=runner.iou_threshold,
+            max_detections=runner.max_detections,
+            require_detection=runner.require_detection,
+            use_beam_search=runner.use_beam_search,
+            clock=runner.clock,
+            cache=runner.cache,
+            storage=runner.storage,
+        )
+        result = scoped_runner.predict_bytes(raw_bytes)
+    hits_after = runner.cache.hits if runner.cache is not None else 0
+    return result, hits_after > hits_before
+
+
+def _persist_audit_if_needed(
+    *,
+    runner: PlateVisionPipeline,
+    active_storage: PredictionStorageProtocol,
+    raw_bytes: bytes,
+    result: PipelineInferenceResult,
+    country_code: str | None,
+    cached: bool,
+) -> None:
+    if runner.storage is active_storage:
+        return
+    resolved_country = (
+        country_code.strip().upper() if country_code is not None else runner.country_code
     )
-    return scoped_runner.predict_bytes(raw_bytes)
+    record = build_audit_record(
+        raw_bytes,
+        country_code=resolved_country,
+        plate_texts=tuple(p.plate_text for p in result.plates),
+        confidences=tuple(p.combined_confidence for p in result.plates),
+        latency_ms=result.latency_ms,
+        cached=cached,
+    )
+    active_storage.save(record)
 
 
 class SecurityAndAuditMiddleware:
@@ -261,6 +303,9 @@ def create_app(
     pipeline: PlateVisionPipeline | None = None,
     metrics: PrometheusMetricsRegistry | None = None,
     rate_limiter: SlidingWindowRateLimiter | None = None,
+    storage: PredictionStorageProtocol | None = None,
+    watchlist: WatchlistMatcher | None = None,
+    drift_detector: DriftDetector | None = None,
 ) -> FastAPI:
     active_config = config if config is not None else ServingConfig()
     active_metrics = metrics if metrics is not None else PrometheusMetricsRegistry()
@@ -272,6 +317,16 @@ def create_app(
             window_seconds=60.0,
         )
     )
+    active_storage: PredictionStorageProtocol = (
+        storage
+        if storage is not None
+        else (
+            pipeline.storage
+            if pipeline is not None and pipeline.storage is not None
+            else InMemoryPredictionStore()
+        )
+    )
+    active_watchlist = watchlist if watchlist is not None else WatchlistMatcher()
     active_pipeline = pipeline
 
     app = FastAPI(
@@ -360,10 +415,18 @@ def create_app(
             active_config,
         )
         runner = _resolve_pipeline()
-        result = _predict_bytes_with_optional_country(
+        result, cached = _predict_bytes_with_optional_country(
             runner,
             raw_bytes,
             payload.country_code,
+        )
+        _persist_audit_if_needed(
+            runner=runner,
+            active_storage=active_storage,
+            raw_bytes=raw_bytes,
+            result=result,
+            country_code=payload.country_code,
+            cached=cached,
         )
         active_metrics.record_request(
             route="/v1/predict",
@@ -400,7 +463,19 @@ def create_app(
                 },
             )
         runner = _resolve_pipeline()
-        result = runner.predict_bytes(raw_bytes)
+        result, cached = _predict_bytes_with_optional_country(
+            runner,
+            raw_bytes,
+            None,
+        )
+        _persist_audit_if_needed(
+            runner=runner,
+            active_storage=active_storage,
+            raw_bytes=raw_bytes,
+            result=result,
+            country_code=None,
+            cached=cached,
+        )
         active_metrics.record_request(
             route="/v1/predict/upload",
             status_code=200,
@@ -432,10 +507,18 @@ def create_app(
                 item.mime_type,
                 active_config,
             )
-            res = _predict_bytes_with_optional_country(
+            res, cached = _predict_bytes_with_optional_country(
                 runner,
                 raw_bytes,
                 item.country_code,
+            )
+            _persist_audit_if_needed(
+                runner=runner,
+                active_storage=active_storage,
+                raw_bytes=raw_bytes,
+                result=res,
+                country_code=item.country_code,
+                cached=cached,
             )
             results.append(res)
             total_plates += len(res.plates)
@@ -492,6 +575,42 @@ def create_app(
             plates_detected=summary.unique_tracks,
         )
         return summary
+
+    @app.get("/v1/audit/recent", response_model=AuditLogResponse)
+    async def audit_recent(limit: int = 50) -> AuditLogResponse:
+        if limit < 1:
+            raise InvalidInputError(
+                "limit must be >= 1",
+                details={"limit": limit},
+            )
+        records = active_storage.list_records(limit=limit)
+        active_metrics.record_request("/v1/audit/recent", 200, 0.1)
+        return AuditLogResponse(records=records, count=len(records))
+
+    @app.post("/v1/watchlist/check", response_model=WatchlistCheckResponse)
+    async def check_watchlist(
+        payload: WatchlistCheckRequest,
+    ) -> WatchlistCheckResponse:
+        matches = active_watchlist.check(
+            payload.plate_text,
+            country_code=payload.country_code,
+        )
+        active_metrics.record_request("/v1/watchlist/check", 200, 0.1)
+        return WatchlistCheckResponse(matches=matches, matched=bool(matches))
+
+    @app.post("/v1/monitoring/drift", response_model=DriftReport)
+    async def evaluate_drift(
+        payload: DriftEvaluationRequest,
+    ) -> DriftReport:
+        if drift_detector is None:
+            raise ModelLoadError("Drift detector baseline is not configured")
+        report = drift_detector.evaluate(
+            current_brightness=payload.brightness,
+            current_contrast=payload.contrast,
+            current_confidences=payload.confidences,
+        )
+        active_metrics.record_request("/v1/monitoring/drift", 200, 0.1)
+        return report
 
     return app
 

@@ -3,6 +3,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from plate_vision.pipeline.runner import PipelineInferenceResult
+from plate_vision.pipeline.watchlist import WatchlistMatch
+from plate_vision.utils.storage import PredictionAuditRecord
 
 
 class SinglePredictRequest(BaseModel):
@@ -34,6 +36,35 @@ class BatchPredictResponse(BaseModel):
     batch_latency_ms: float = Field(ge=0.0)
 
 
+class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    records: tuple[PredictionAuditRecord, ...]
+    count: int = Field(ge=0)
+
+
+class WatchlistCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+
+
+class WatchlistCheckResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    matches: tuple[WatchlistMatch, ...]
+    matched: bool
+
+
+class DriftEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    brightness: tuple[float, ...] = Field(min_length=1)
+    contrast: tuple[float, ...] = Field(min_length=1)
+    confidences: tuple[float, ...] = Field(min_length=1)
+
+
 class HealthStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -59,11 +90,15 @@ class StructuredErrorResponse(BaseModel):
 
 
 __all__ = [
+    "AuditLogResponse",
     "BatchPredictRequest",
     "BatchPredictResponse",
+    "DriftEvaluationRequest",
     "HealthStatusResponse",
     "ReadinessStatusResponse",
     "SinglePredictRequest",
     "StructuredErrorResponse",
     "VideoPredictRequest",
+    "WatchlistCheckRequest",
+    "WatchlistCheckResponse",
 ]
