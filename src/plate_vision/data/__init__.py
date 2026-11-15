@@ -1,3 +1,9 @@
+from plate_vision.data.active_learning import (
+    ActiveLearningConfig,
+    ActiveLearningSampler,
+    HardExampleCandidate,
+    SelectionReason,
+)
 from plate_vision.data.augmentation import AugmentationConfig, AugmentationPipeline
 from plate_vision.data.deduplication import deduplicate_records
 from plate_vision.data.exporters import export_recognizer_manifests, export_yolo_dataset
@@ -64,6 +70,8 @@ __all__ = [
     "TURKEY_DIGIT_TO_ALPHA",
     "TURKEY_PATTERNS",
     "UK_PATTERNS",
+    "ActiveLearningConfig",
+    "ActiveLearningSampler",
     "AugmentationConfig",
     "AugmentationPipeline",
     "AzerbaijanCountryProfile",
@@ -75,9 +83,11 @@ __all__ = [
     "DatasetStorageProtocol",
     "DeduplicationResult",
     "GermanyCountryProfile",
+    "HardExampleCandidate",
     "ImageMetadata",
     "LocalFileStorage",
     "PlateAnnotation",
+    "SelectionReason",
     "SplitDataset",
     "SyntheticPlateConfig",
     "TurkeyCountryProfile",
