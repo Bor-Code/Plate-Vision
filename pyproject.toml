@@ -24,6 +24,10 @@ dependencies = [
 [project.scripts]
 train_detector = "plate_vision.detection.cli:main"
 train_recognizer = "plate_vision.recognition.cli:main"
+export_models = "plate_vision.export.cli:main"
+evaluate_pipeline = "plate_vision.evaluation.cli:main"
+predict_plate = "plate_vision.pipeline.cli:main"
+
 
 [dependency-groups]
 dev = [
