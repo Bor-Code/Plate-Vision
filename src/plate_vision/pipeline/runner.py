@@ -17,6 +17,12 @@ from plate_vision.pipeline.rectification import (
 )
 from plate_vision.recognition.model import PlateRecognizerProtocol
 from plate_vision.utils.exceptions import EmptyDetectionError, InferenceTimeoutError
+from plate_vision.utils.storage import (
+    PredictionCache,
+    PredictionStorageProtocol,
+    build_audit_record,
+    compute_payload_sha256,
+)
 
 
 class PlatePredictionResult(BaseModel):
@@ -62,6 +68,8 @@ class PlateVisionPipeline:
         require_detection: bool = False,
         use_beam_search: bool = True,
         clock: Callable[[], float] = time.perf_counter,
+        cache: PredictionCache[PipelineInferenceResult] | None = None,
+        storage: PredictionStorageProtocol | None = None,
     ) -> None:
         self.detector = detector
         self.recognizer = recognizer
@@ -79,6 +87,27 @@ class PlateVisionPipeline:
         self.require_detection = require_detection
         self.use_beam_search = use_beam_search
         self.clock = clock
+        self.cache = cache
+        self.storage = storage
+
+    def _record_audit(
+        self,
+        image_bytes: bytes,
+        result: PipelineInferenceResult,
+        *,
+        cached: bool,
+    ) -> None:
+        if self.storage is None:
+            return
+        record = build_audit_record(
+            image_bytes,
+            country_code=self.country_code,
+            plate_texts=tuple(p.plate_text for p in result.plates),
+            confidences=tuple(p.combined_confidence for p in result.plates),
+            latency_ms=result.latency_ms,
+            cached=cached,
+        )
+        self.storage.save(record)
 
     def _check_timeout(self, start_time: float, stage: str) -> None:
         elapsed = self.clock() - start_time
@@ -101,6 +130,14 @@ class PlateVisionPipeline:
         *,
         corners_override: Mapping[int, tuple[Point2D, Point2D, Point2D, Point2D]] | None = None,
     ) -> PipelineInferenceResult:
+        cache_key: str | None = None
+        if self.cache is not None and corners_override is None:
+            cache_key = f"{self.country_code}:{compute_payload_sha256(image_bytes)}"
+            cached_res = self.cache.get(cache_key)
+            if cached_res is not None:
+                self._record_audit(image_bytes, cached_res, cached=True)
+                return cached_res
+
         start_time = self.clock()
         image_pixels = decode_image_to_grayscale(
             image_bytes,
@@ -133,12 +170,16 @@ class PlateVisionPipeline:
                     details={"image_width": image_width, "image_height": image_height},
                 )
             elapsed_ms = max(0.0, (self.clock() - start_time) * 1000.0)
-            return PipelineInferenceResult(
+            empty_res = PipelineInferenceResult(
                 plates=(),
                 image_width=image_width,
                 image_height=image_height,
                 latency_ms=round(elapsed_ms, 4),
             )
+            if self.cache is not None and cache_key is not None:
+                self.cache.put(cache_key, empty_res)
+            self._record_audit(image_bytes, empty_res, cached=False)
+            return empty_res
 
         results: list[PlatePredictionResult] = []
         for idx, det in enumerate(valid_detections):
@@ -188,12 +229,16 @@ class PlateVisionPipeline:
             )
 
         elapsed_ms = max(0.0, (self.clock() - start_time) * 1000.0)
-        return PipelineInferenceResult(
+        final_res = PipelineInferenceResult(
             plates=tuple(results),
             image_width=image_width,
             image_height=image_height,
             latency_ms=round(elapsed_ms, 4),
         )
+        if self.cache is not None and cache_key is not None:
+            self.cache.put(cache_key, final_res)
+        self._record_audit(image_bytes, final_res, cached=False)
+        return final_res
 
 
 __all__ = [
