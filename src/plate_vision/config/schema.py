@@ -133,6 +133,8 @@ class ServingConfig(BaseModel):
     detector_onnx_path: Path = Field(default=Path("artifacts/models/detector.onnx"))
     recognizer_onnx_path: Path = Field(default=Path("artifacts/models/recognizer.onnx"))
     enable_metrics: bool = Field(default=True)
+    rate_limit_requests_per_minute: int = Field(default=600, ge=1)
+    api_keys: tuple[str, ...] = Field(default=())
 
 
 class AppSettings(BaseSettings):

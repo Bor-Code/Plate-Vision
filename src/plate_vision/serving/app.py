@@ -2,7 +2,8 @@ import base64
 import binascii
 import json
 import time
-from collections.abc import MutableMapping
+import uuid
+from collections.abc import Mapping, MutableMapping
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from plate_vision import __version__
 from plate_vision.config.schema import ServingConfig
+from plate_vision.data.profiles import get_country_profile
 from plate_vision.export.runtime import OnnxDetectorRuntime, OnnxRecognizerRuntime
 from plate_vision.pipeline.runner import PipelineInferenceResult, PlateVisionPipeline
 from plate_vision.serving.metrics import PrometheusMetricsRegistry
@@ -21,7 +23,9 @@ from plate_vision.serving.schemas import (
     ReadinessStatusResponse,
     SinglePredictRequest,
     StructuredErrorResponse,
+    VideoPredictRequest,
 )
+from plate_vision.serving.security import SlidingWindowRateLimiter, verify_api_key
 from plate_vision.utils.exceptions import (
     CorruptedImageError,
     EmptyDetectionError,
@@ -29,6 +33,11 @@ from plate_vision.utils.exceptions import (
     InvalidInputError,
     ModelLoadError,
     PlateVisionError,
+)
+from plate_vision.video.processor import (
+    VideoFrameInput,
+    VideoStreamProcessor,
+    VideoStreamSummary,
 )
 
 
@@ -88,18 +97,192 @@ def load_pipeline_from_config(config: ServingConfig) -> PlateVisionPipeline:
     )
 
 
+def _predict_bytes_with_optional_country(
+    runner: PlateVisionPipeline,
+    raw_bytes: bytes,
+    country_code: str | None,
+) -> PipelineInferenceResult:
+    if country_code is None:
+        return runner.predict_bytes(raw_bytes)
+    profile = get_country_profile(country_code)
+    scoped_runner = PlateVisionPipeline(
+        detector=runner.detector,
+        recognizer=runner.recognizer,
+        profile=profile,
+        max_payload_bytes=runner.max_payload_bytes,
+        timeout_seconds=runner.timeout_seconds,
+        min_plate_width=runner.min_plate_width,
+        min_plate_height=runner.min_plate_height,
+        target_crop_width=runner.target_crop_width,
+        target_crop_height=runner.target_crop_height,
+        confidence_threshold=runner.confidence_threshold,
+        iou_threshold=runner.iou_threshold,
+        max_detections=runner.max_detections,
+        require_detection=runner.require_detection,
+        use_beam_search=runner.use_beam_search,
+        clock=runner.clock,
+    )
+    return scoped_runner.predict_bytes(raw_bytes)
+
+
+class SecurityAndAuditMiddleware:
+    def __init__(
+        self,
+        app: Any,
+        config: ServingConfig,
+        metrics: PrometheusMetricsRegistry,
+        rate_limiter: SlidingWindowRateLimiter,
+    ) -> None:
+        self.app = app
+        self.config = config
+        self.metrics = metrics
+        self.rate_limiter = rate_limiter
+
+    async def __call__(
+        self,
+        scope: MutableMapping[str, Any],
+        receive: Any,
+        send: Any,
+    ) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        raw_headers: list[tuple[bytes, bytes]] = list(scope.get("headers", []))
+        header_map: dict[str, str] = {
+            bytes(k).decode("latin-1").lower(): bytes(v).decode("latin-1") for k, v in raw_headers
+        }
+        request_id = header_map.get("x-request-id", "").strip() or uuid.uuid4().hex
+        path = str(scope.get("path", "/"))
+        client_tuple = scope.get("client")
+        client_host = (
+            str(client_tuple[0])
+            if isinstance(client_tuple, tuple | list) and client_tuple
+            else "unknown"
+        )
+        provided_api_key = header_map.get("x-api-key")
+        rate_remaining: int | None = None
+
+        if path not in ("/healthz", "/readyz"):
+            if not verify_api_key(provided_api_key, self.config.api_keys):
+                self.metrics.record_error("UNAUTHORIZED")
+                self.metrics.record_request(route=path, status_code=401, latency_ms=0.0)
+                err_body = StructuredErrorResponse(
+                    error_code="UNAUTHORIZED",
+                    message="Missing or invalid API key",
+                    details={"request_id": request_id},
+                )
+                await self._send_json(
+                    send,
+                    status_code=401,
+                    payload=err_body.model_dump(),
+                    extra_headers=[
+                        (b"x-request-id", request_id.encode("latin-1")),
+                    ],
+                )
+                return
+
+            client_key = provided_api_key if provided_api_key else client_host
+            decision = self.rate_limiter.check(client_key)
+            rate_remaining = decision.remaining
+            if not decision.allowed:
+                self.metrics.record_error("RATE_LIMIT_EXCEEDED")
+                self.metrics.record_request(route=path, status_code=429, latency_ms=0.0)
+                err_body = StructuredErrorResponse(
+                    error_code="RATE_LIMIT_EXCEEDED",
+                    message="Rate limit exceeded",
+                    details={
+                        "request_id": request_id,
+                        "reset_after_seconds": decision.reset_after_seconds,
+                    },
+                )
+                await self._send_json(
+                    send,
+                    status_code=429,
+                    payload=err_body.model_dump(),
+                    extra_headers=[
+                        (b"x-request-id", request_id.encode("latin-1")),
+                        (b"x-ratelimit-remaining", b"0"),
+                        (
+                            b"retry-after",
+                            str(max(1, int(decision.reset_after_seconds))).encode("ascii"),
+                        ),
+                    ],
+                )
+                return
+
+        async def send_with_headers(message: MutableMapping[str, Any]) -> None:
+            if message.get("type") == "http.response.start":
+                headers: list[tuple[bytes, bytes]] = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode("latin-1")))
+                if rate_remaining is not None:
+                    headers.append(
+                        (
+                            b"x-ratelimit-remaining",
+                            str(rate_remaining).encode("ascii"),
+                        )
+                    )
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+    @staticmethod
+    async def _send_json(
+        send: Any,
+        status_code: int,
+        payload: dict[str, Any],
+        extra_headers: list[tuple[bytes, bytes]],
+    ) -> None:
+        raw = json.dumps(payload).encode("utf-8")
+        headers: list[tuple[bytes, bytes]] = [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(raw)).encode("ascii")),
+            *extra_headers,
+        ]
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status_code,
+                "headers": headers,
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": raw,
+                "more_body": False,
+            }
+        )
+
+
 def create_app(
     config: ServingConfig | None = None,
     pipeline: PlateVisionPipeline | None = None,
     metrics: PrometheusMetricsRegistry | None = None,
+    rate_limiter: SlidingWindowRateLimiter | None = None,
 ) -> FastAPI:
     active_config = config if config is not None else ServingConfig()
     active_metrics = metrics if metrics is not None else PrometheusMetricsRegistry()
+    active_limiter = (
+        rate_limiter
+        if rate_limiter is not None
+        else SlidingWindowRateLimiter(
+            max_requests_per_window=active_config.rate_limit_requests_per_minute,
+            window_seconds=60.0,
+        )
+    )
     active_pipeline = pipeline
 
     app = FastAPI(
         title="Plate-Vision Inference Service",
         version=__version__,
+    )
+    app.add_middleware(
+        SecurityAndAuditMiddleware,
+        config=active_config,
+        metrics=active_metrics,
+        rate_limiter=active_limiter,
     )
 
     @app.exception_handler(PlateVisionError)
@@ -177,7 +360,11 @@ def create_app(
             active_config,
         )
         runner = _resolve_pipeline()
-        result = runner.predict_bytes(raw_bytes)
+        result = _predict_bytes_with_optional_country(
+            runner,
+            raw_bytes,
+            payload.country_code,
+        )
         active_metrics.record_request(
             route="/v1/predict",
             status_code=200,
@@ -245,7 +432,11 @@ def create_app(
                 item.mime_type,
                 active_config,
             )
-            res = runner.predict_bytes(raw_bytes)
+            res = _predict_bytes_with_optional_country(
+                runner,
+                raw_bytes,
+                item.country_code,
+            )
             results.append(res)
             total_plates += len(res.plates)
 
@@ -261,6 +452,46 @@ def create_app(
             total_plates=total_plates,
             batch_latency_ms=round(elapsed_ms, 4),
         )
+
+    @app.post("/v1/predict/video", response_model=VideoStreamSummary)
+    async def predict_video(
+        payload: VideoPredictRequest,
+    ) -> VideoStreamSummary:
+        if len(payload.frames) > active_config.max_batch_size:
+            raise InvalidInputError(
+                f"Video frame count {len(payload.frames)} exceeds limit "
+                f"{active_config.max_batch_size}",
+                details={
+                    "frame_count": len(payload.frames),
+                    "max_batch_size": active_config.max_batch_size,
+                },
+            )
+        start = time.perf_counter()
+        runner = _resolve_pipeline()
+        frame_inputs: list[VideoFrameInput] = []
+        for idx, frame_req in enumerate(payload.frames):
+            raw_bytes = _decode_base64_payload(
+                frame_req.image_base64,
+                frame_req.mime_type,
+                active_config,
+            )
+            frame_inputs.append(
+                VideoFrameInput(
+                    frame_index=idx,
+                    timestamp_ms=round((idx * 1000.0) / payload.fps, 4),
+                    image_bytes=raw_bytes,
+                )
+            )
+        processor = VideoStreamProcessor(pipeline=runner)
+        summary = processor.process_stream(frame_inputs)
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request(
+            route="/v1/predict/video",
+            status_code=200,
+            latency_ms=elapsed_ms,
+            plates_detected=summary.unique_tracks,
+        )
+        return summary
 
     return app
 
@@ -291,6 +522,8 @@ class AsgiTestClient:
         json_body: Any = None,
         raw_body: bytes = b"",
         content_type: str | None = None,
+        headers: Mapping[str, str] | None = None,
+        client_host: str = "127.0.0.1",
     ) -> AsgiResponse:
         parsed = urlsplit(path)
         headers_list: list[tuple[bytes, bytes]] = [(b"host", b"testserver")]
@@ -302,6 +535,9 @@ class AsgiTestClient:
             if content_type is not None:
                 headers_list.append((b"content-type", content_type.encode("latin-1")))
         headers_list.append((b"content-length", str(len(payload_bytes)).encode("ascii")))
+        if headers is not None:
+            for k, v in headers.items():
+                headers_list.append((k.lower().encode("latin-1"), v.encode("latin-1")))
 
         scope: dict[str, Any] = {
             "type": "http",
@@ -313,7 +549,7 @@ class AsgiTestClient:
             "raw_path": parsed.path.encode("ascii"),
             "query_string": parsed.query.encode("ascii"),
             "headers": headers_list,
-            "client": ("127.0.0.1", 50000),
+            "client": (client_host, 50000),
             "server": ("testserver", 80),
         }
 
@@ -359,8 +595,13 @@ class AsgiTestClient:
             body=b"".join(body_chunks),
         )
 
-    def get(self, path: str) -> AsgiResponse:
-        return self.request("GET", path)
+    def get(
+        self,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> AsgiResponse:
+        return self.request("GET", path, headers=headers)
 
     def post(
         self,
@@ -369,6 +610,7 @@ class AsgiTestClient:
         json: Any = None,
         raw_body: bytes = b"",
         content_type: str | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> AsgiResponse:
         return self.request(
             "POST",
@@ -376,12 +618,14 @@ class AsgiTestClient:
             json_body=json,
             raw_body=raw_body,
             content_type=content_type,
+            headers=headers,
         )
 
 
 __all__ = [
     "AsgiResponse",
     "AsgiTestClient",
+    "SecurityAndAuditMiddleware",
     "create_app",
     "load_pipeline_from_config",
     "map_error_to_status_code",
