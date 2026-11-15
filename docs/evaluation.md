@@ -1,6 +1,6 @@
 # Evaluation Suite and Error Analysis
 
-Plate-Vision provides a unified evaluation suite (`plate_vision.evaluation`) that measures detector performance, recognizer accuracy, end-to-end plate recognition accuracy, latency percentiles, throughput, and error analysis artifacts.
+Plate-Vision provides a unified evaluation suite (`plate_vision.evaluation`) that measures detector performance, recognizer accuracy, end-to-end plate recognition accuracy, latency percentiles, throughput, confidence calibration, drift detection, and error analysis artifacts.
 
 ## Metrics Computed
 
@@ -20,6 +20,11 @@ Plate-Vision provides a unified evaluation suite (`plate_vision.evaluation`) tha
 - `latency_p50_ms`: Median (50th percentile) per-image inference latency in milliseconds.
 - `latency_p95_ms`: 95th percentile per-image inference latency in milliseconds.
 - `throughput_fps`: Sustained frames per second computed from total measured execution time.
+
+### 4. Confidence Calibration and Drift Monitoring (`plate_vision.evaluation.monitoring`)
+- `compute_expected_calibration_error`: Computes Expected Calibration Error (`ECE`), Maximum Calibration Error (`MCE`), Brier score, and reliability diagram bins (`ReliabilityBin`).
+- `TemperatureScaler`: Fits post-hoc temperature scaling on validation confidences to minimize negative log-likelihood and improve confidence calibration.
+- `compute_population_stability_index` & `DriftDetector`: Measures Population Stability Index (`PSI`) across image brightness, contrast, and prediction confidence distributions to detect production covariate and prediction shift.
 
 ## Error Analysis Artifacts
 
