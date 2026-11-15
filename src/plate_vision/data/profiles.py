@@ -46,6 +46,27 @@ AZERBAIJAN_PATTERNS: Final[tuple[Pattern[str], ...]] = (
     re.compile(r"^(0[1-9]|[1-9][0-9])([A-Z]{2})([0-9]{3})$"),
 )
 
+FRANCE_LETTERS: Final[str] = "ABCDEFGHJKLMNPQRSTVWXYZ"
+FRANCE_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-HJ-NP-TV-Z]{2})([0-9]{3})([A-HJ-NP-TV-Z]{2})$"),
+)
+
+ITALY_LETTERS: Final[str] = "ABCDEFGHJKLMNPRSTVWXYZ"
+ITALY_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-HJ-NPR-TV-Z]{2})([0-9]{3})([A-HJ-NPR-TV-Z]{2})$"),
+)
+
+SPAIN_LETTERS: Final[str] = "BCDFGHJKLMNPRSTVWXYZ"
+SPAIN_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([0-9]{4})([BCDFGHJKLMNPRSTVWXYZ]{3})$"),
+)
+
+NETHERLANDS_LETTERS: Final[str] = "BCDFGHJKLMNPQRSTVWXZ"
+NETHERLANDS_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([0-9]{2})([BCDFGHJKLMNPQRSTVWXZ]{3})([0-9]{1})$"),
+    re.compile(r"^([0-9]{1})([BCDFGHJKLMNPQRSTVWXZ]{3})([0-9]{2})$"),
+)
+
 
 class CountryProfileProtocol(Protocol):
     @property
@@ -355,6 +376,212 @@ class AzerbaijanCountryProfile:
         return f"{region}{letters}{digits}"
 
 
+class FranceCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "FR"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return FRANCE_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return {"8": "B", "5": "S", "2": "Z"}
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 7:
+            return normalized
+        chars = list(normalized)
+        for idx in (0, 1, 5, 6):
+            if chars[idx] in self.digit_to_alpha_map:
+                chars[idx] = self.digit_to_alpha_map[chars[idx]]
+        for idx in (2, 3, 4):
+            if chars[idx] in self.alpha_to_digit_map:
+                chars[idx] = self.alpha_to_digit_map[chars[idx]]
+        candidate = "".join(chars)
+        return candidate if self.is_valid(candidate) else normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix = "".join(rng.choice(FRANCE_LETTERS) for _ in range(2))
+        digits = f"{rng.randint(1, 999):03d}"
+        suffix = "".join(rng.choice(FRANCE_LETTERS) for _ in range(2))
+        return f"{prefix}{digits}{suffix}"
+
+
+class ItalyCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "IT"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return ITALY_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return {"8": "B", "5": "S", "2": "Z"}
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 7:
+            return normalized
+        chars = list(normalized)
+        for idx in (0, 1, 5, 6):
+            if chars[idx] in self.digit_to_alpha_map:
+                chars[idx] = self.digit_to_alpha_map[chars[idx]]
+        for idx in (2, 3, 4):
+            if chars[idx] in self.alpha_to_digit_map:
+                chars[idx] = self.alpha_to_digit_map[chars[idx]]
+        candidate = "".join(chars)
+        return candidate if self.is_valid(candidate) else normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix = "".join(rng.choice(ITALY_LETTERS) for _ in range(2))
+        digits = f"{rng.randint(1, 999):03d}"
+        suffix = "".join(rng.choice(ITALY_LETTERS) for _ in range(2))
+        return f"{prefix}{digits}{suffix}"
+
+
+class SpainCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "ES"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return SPAIN_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return {"8": "B", "5": "S", "2": "Z"}
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 7:
+            return normalized
+        chars = list(normalized)
+        for idx in (0, 1, 2, 3):
+            if chars[idx] in self.alpha_to_digit_map:
+                chars[idx] = self.alpha_to_digit_map[chars[idx]]
+        for idx in (4, 5, 6):
+            if chars[idx] in self.digit_to_alpha_map:
+                chars[idx] = self.digit_to_alpha_map[chars[idx]]
+        candidate = "".join(chars)
+        return candidate if self.is_valid(candidate) else normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        digits = f"{rng.randint(0, 9999):04d}"
+        letters = "".join(rng.choice(SPAIN_LETTERS) for _ in range(3))
+        return f"{digits}{letters}"
+
+
+class NetherlandsCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "NL"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return NETHERLANDS_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return {"8": "B", "5": "S", "2": "Z"}
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+        return "".join(ch for ch in cleaned if ch.isalnum())
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 6:
+            return normalized
+        layouts = (
+            ((0, 1, 5), (2, 3, 4)),
+            ((0, 4, 5), (1, 2, 3)),
+        )
+        for digit_indices, alpha_indices in layouts:
+            chars = list(normalized)
+            for idx in digit_indices:
+                if chars[idx] in self.alpha_to_digit_map:
+                    chars[idx] = self.alpha_to_digit_map[chars[idx]]
+            for idx in alpha_indices:
+                if chars[idx] in self.digit_to_alpha_map:
+                    chars[idx] = self.digit_to_alpha_map[chars[idx]]
+            candidate = "".join(chars)
+            if self.is_valid(candidate):
+                return candidate
+        return normalized
+
+    def sample_plate(self, rng: random.Random) -> str:
+        letters = "".join(rng.choice(NETHERLANDS_LETTERS) for _ in range(3))
+        if rng.choice((True, False)):
+            return f"{rng.randint(10, 99)}{letters}{rng.randint(1, 9)}"
+        return f"{rng.randint(1, 9)}{letters}{rng.randint(10, 99)}"
+
+
 class CountryProfileRegistry:
     def __init__(self) -> None:
         self._profiles: dict[str, CountryProfileProtocol] = {}
@@ -384,6 +611,10 @@ DEFAULT_PROFILE_REGISTRY.register(TurkeyCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(GermanyCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(UnitedKingdomCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(AzerbaijanCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(FranceCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(ItalyCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(SpainCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(NetherlandsCountryProfile())
 
 
 def register_country_profile(profile: CountryProfileProtocol) -> None:
@@ -396,7 +627,11 @@ def get_country_profile(country_code: str) -> CountryProfileProtocol:
 
 __all__ = [
     "AZERBAIJAN_PATTERNS",
+    "FRANCE_PATTERNS",
     "GERMANY_PATTERNS",
+    "ITALY_PATTERNS",
+    "NETHERLANDS_PATTERNS",
+    "SPAIN_PATTERNS",
     "STANDARD_LATIN_CHARSET",
     "TURKEY_ALPHA_TO_DIGIT",
     "TURKEY_CHARSET",
@@ -406,7 +641,11 @@ __all__ = [
     "AzerbaijanCountryProfile",
     "CountryProfileProtocol",
     "CountryProfileRegistry",
+    "FranceCountryProfile",
     "GermanyCountryProfile",
+    "ItalyCountryProfile",
+    "NetherlandsCountryProfile",
+    "SpainCountryProfile",
     "TurkeyCountryProfile",
     "UnitedKingdomCountryProfile",
     "get_country_profile",
