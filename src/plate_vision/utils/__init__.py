@@ -31,6 +31,7 @@ from plate_vision.utils.storage import (
     PredictionAuditRecord,
     PredictionCache,
     PredictionStorageProtocol,
+    SqlitePredictionStore,
     build_audit_record,
     compute_payload_sha256,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "PredictionCache",
     "PredictionStorageProtocol",
     "SemanticVersion",
+    "SqlitePredictionStore",
     "bind_context",
     "build_audit_record",
     "bump_semantic_version",
