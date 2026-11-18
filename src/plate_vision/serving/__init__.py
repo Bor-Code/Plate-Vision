@@ -25,8 +25,19 @@ from plate_vision.serving.security import (
     SlidingWindowRateLimiter,
     verify_api_key,
 )
+from plate_vision.serving.webhooks import (
+    AlertEventType,
+    InMemoryWebhookTransport,
+    WebhookAlertDispatcher,
+    WebhookAlertEvent,
+    WebhookDeliveryRecord,
+    WebhookTransportProtocol,
+    compute_hmac_sha256_signature,
+    verify_hmac_sha256_signature,
+)
 
 __all__ = [
+    "AlertEventType",
     "AsgiResponse",
     "AsgiTestClient",
     "AuditLogResponse",
@@ -34,6 +45,7 @@ __all__ = [
     "BatchPredictResponse",
     "DriftEvaluationRequest",
     "HealthStatusResponse",
+    "InMemoryWebhookTransport",
     "MetricsSnapshot",
     "PrometheusMetricsRegistry",
     "RateLimitDecision",
@@ -45,8 +57,14 @@ __all__ = [
     "VideoPredictRequest",
     "WatchlistCheckRequest",
     "WatchlistCheckResponse",
+    "WebhookAlertDispatcher",
+    "WebhookAlertEvent",
+    "WebhookDeliveryRecord",
+    "WebhookTransportProtocol",
+    "compute_hmac_sha256_signature",
     "create_app",
     "load_pipeline_from_config",
     "map_error_to_status_code",
     "verify_api_key",
+    "verify_hmac_sha256_signature",
 ]
