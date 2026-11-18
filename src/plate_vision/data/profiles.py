@@ -67,6 +67,22 @@ NETHERLANDS_PATTERNS: Final[tuple[Pattern[str], ...]] = (
     re.compile(r"^([0-9]{1})([BCDFGHJKLMNPQRSTVWXZ]{3})([0-9]{2})$"),
 )
 
+US_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{3})([0-9]{4})$"),
+    re.compile(r"^([0-9]{1})([A-Z]{3})([0-9]{3})$"),
+)
+
+CANADA_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{4})([0-9]{3})$"),
+    re.compile(r"^([A-Z]{3})([0-9]{3})$"),
+)
+
+JAPAN_PATTERNS: Final[tuple[Pattern[str], ...]] = (re.compile(r"^([0-9]{3})([A-Z]{1})([0-9]{4})$"),)
+
+SOUTH_KOREA_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([0-9]{2,3})([A-Z]{1})([0-9]{4})$"),
+)
+
 
 class CountryProfileProtocol(Protocol):
     @property
@@ -582,6 +598,243 @@ class NetherlandsCountryProfile:
         return f"{rng.randint(1, 9)}{letters}{rng.randint(10, 99)}"
 
 
+def _normalize_alnum(raw_text: str) -> str:
+    cleaned = re.sub(r"[\s\-_.]+", "", raw_text.upper())
+    return "".join(ch for ch in cleaned if ch.isalnum())
+
+
+def _apply_positional_layouts(
+    normalized: str,
+    layouts: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...],
+    alpha_to_digit: Mapping[str, str],
+    digit_to_alpha: Mapping[str, str],
+    patterns: tuple[Pattern[str], ...],
+) -> str:
+    for digit_indices, alpha_indices in layouts:
+        chars = list(normalized)
+        for idx in digit_indices:
+            if chars[idx] in alpha_to_digit:
+                chars[idx] = alpha_to_digit[chars[idx]]
+        for idx in alpha_indices:
+            if chars[idx] in digit_to_alpha:
+                chars[idx] = digit_to_alpha[chars[idx]]
+        candidate = "".join(chars)
+        if any(p.fullmatch(candidate) is not None for p in patterns):
+            return candidate
+    return normalized
+
+
+class UnitedStatesCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "US"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return US_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        return _normalize_alnum(raw_text)
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 7:
+            return normalized
+        layouts = (
+            ((3, 4, 5, 6), (0, 1, 2)),
+            ((0, 4, 5, 6), (1, 2, 3)),
+        )
+        return _apply_positional_layouts(
+            normalized,
+            layouts,
+            self.alpha_to_digit_map,
+            self.digit_to_alpha_map,
+            self.regex_patterns,
+        )
+
+    def sample_plate(self, rng: random.Random) -> str:
+        letters = "".join(rng.choice(STANDARD_LETTERS) for _ in range(3))
+        if rng.choice((True, False)):
+            return f"{letters}{rng.randint(1000, 9999)}"
+        return f"{rng.randint(1, 9)}{letters}{rng.randint(100, 999)}"
+
+
+class CanadaCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "CA"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return CANADA_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        return _normalize_alnum(raw_text)
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized):
+            return normalized
+        if len(normalized) == 7:
+            layouts: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] = (
+                ((4, 5, 6), (0, 1, 2, 3)),
+            )
+        elif len(normalized) == 6:
+            layouts = (((3, 4, 5), (0, 1, 2)),)
+        else:
+            return normalized
+        return _apply_positional_layouts(
+            normalized,
+            layouts,
+            self.alpha_to_digit_map,
+            self.digit_to_alpha_map,
+            self.regex_patterns,
+        )
+
+    def sample_plate(self, rng: random.Random) -> str:
+        letter_count = rng.choice((3, 4))
+        letters = "".join(rng.choice(STANDARD_LETTERS) for _ in range(letter_count))
+        return f"{letters}{rng.randint(100, 999)}"
+
+
+class JapanCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "JP"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return JAPAN_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        return _normalize_alnum(raw_text)
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != 8:
+            return normalized
+        layouts = (((0, 1, 2, 4, 5, 6, 7), (3,)),)
+        return _apply_positional_layouts(
+            normalized,
+            layouts,
+            self.alpha_to_digit_map,
+            self.digit_to_alpha_map,
+            self.regex_patterns,
+        )
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix = f"{rng.randint(100, 999)}"
+        code_char = rng.choice(STANDARD_LETTERS)
+        suffix = f"{rng.randint(1000, 9999)}"
+        return f"{prefix}{code_char}{suffix}"
+
+
+class SouthKoreaCountryProfile:
+    @property
+    def country_code(self) -> str:
+        return "KR"
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return SOUTH_KOREA_PATTERNS
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        return _normalize_alnum(raw_text)
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self.regex_patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized):
+            return normalized
+        if len(normalized) == 7:
+            layouts: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] = (
+                ((0, 1, 3, 4, 5, 6), (2,)),
+            )
+        elif len(normalized) == 8:
+            layouts = (((0, 1, 2, 4, 5, 6, 7), (3,)),)
+        else:
+            return normalized
+        return _apply_positional_layouts(
+            normalized,
+            layouts,
+            self.alpha_to_digit_map,
+            self.digit_to_alpha_map,
+            self.regex_patterns,
+        )
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix_len = rng.choice((2, 3))
+        low = 10 ** (prefix_len - 1)
+        high = (10**prefix_len) - 1
+        prefix = f"{rng.randint(low, high)}"
+        code_char = rng.choice(STANDARD_LETTERS)
+        suffix = f"{rng.randint(1000, 9999)}"
+        return f"{prefix}{code_char}{suffix}"
+
+
 class CountryProfileRegistry:
     def __init__(self) -> None:
         self._profiles: dict[str, CountryProfileProtocol] = {}
@@ -615,6 +868,10 @@ DEFAULT_PROFILE_REGISTRY.register(FranceCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(ItalyCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(SpainCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(NetherlandsCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(UnitedStatesCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(CanadaCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(JapanCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(SouthKoreaCountryProfile())
 
 
 def register_country_profile(profile: CountryProfileProtocol) -> None:
@@ -627,10 +884,13 @@ def get_country_profile(country_code: str) -> CountryProfileProtocol:
 
 __all__ = [
     "AZERBAIJAN_PATTERNS",
+    "CANADA_PATTERNS",
     "FRANCE_PATTERNS",
     "GERMANY_PATTERNS",
     "ITALY_PATTERNS",
+    "JAPAN_PATTERNS",
     "NETHERLANDS_PATTERNS",
+    "SOUTH_KOREA_PATTERNS",
     "SPAIN_PATTERNS",
     "STANDARD_LATIN_CHARSET",
     "TURKEY_ALPHA_TO_DIGIT",
@@ -638,16 +898,21 @@ __all__ = [
     "TURKEY_DIGIT_TO_ALPHA",
     "TURKEY_PATTERNS",
     "UK_PATTERNS",
+    "US_PATTERNS",
     "AzerbaijanCountryProfile",
+    "CanadaCountryProfile",
     "CountryProfileProtocol",
     "CountryProfileRegistry",
     "FranceCountryProfile",
     "GermanyCountryProfile",
     "ItalyCountryProfile",
+    "JapanCountryProfile",
     "NetherlandsCountryProfile",
+    "SouthKoreaCountryProfile",
     "SpainCountryProfile",
     "TurkeyCountryProfile",
     "UnitedKingdomCountryProfile",
+    "UnitedStatesCountryProfile",
     "get_country_profile",
     "register_country_profile",
 ]

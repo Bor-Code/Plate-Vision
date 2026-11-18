@@ -44,7 +44,20 @@ def postprocess_plate_text(
 class MultiCountryPostProcessor:
     def __init__(
         self,
-        country_codes: Sequence[str] = ("TR", "DE", "GB", "AZ", "FR", "IT", "ES", "NL"),
+        country_codes: Sequence[str] = (
+            "TR",
+            "DE",
+            "GB",
+            "AZ",
+            "FR",
+            "IT",
+            "ES",
+            "NL",
+            "US",
+            "CA",
+            "JP",
+            "KR",
+        ),
         registry: CountryProfileRegistry | None = None,
     ) -> None:
         if not country_codes:

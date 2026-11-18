@@ -7,7 +7,20 @@ from plate_vision.pipeline.postprocess import MultiCountryPostProcessor
 
 def test_eu_profiles_synthetic_generation_and_multi_country_postprocess() -> None:
     processor = MultiCountryPostProcessor()
-    assert processor.country_codes == ("TR", "DE", "GB", "AZ", "FR", "IT", "ES", "NL")
+    assert processor.country_codes == (
+        "TR",
+        "DE",
+        "GB",
+        "AZ",
+        "FR",
+        "IT",
+        "ES",
+        "NL",
+        "US",
+        "CA",
+        "JP",
+        "KR",
+    )
 
     es_res = processor.resolve("9234 8CD")
     assert es_res.country_code == "ES"
