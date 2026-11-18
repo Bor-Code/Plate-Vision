@@ -8,6 +8,12 @@ from plate_vision.pipeline.privacy import (
     RedactionMode,
     redact_regions,
 )
+from plate_vision.pipeline.quality import (
+    ImageQualityReport,
+    QualityIssue,
+    QualityThresholds,
+    assess_image_quality,
+)
 from plate_vision.pipeline.rectification import (
     Point2D,
     decode_image_to_grayscale,
@@ -28,18 +34,22 @@ from plate_vision.pipeline.watchlist import (
 )
 
 __all__ = [
+    "ImageQualityReport",
     "MultiCountryPostProcessor",
     "PipelineInferenceResult",
     "PlatePredictionResult",
     "PlateVisionPipeline",
     "Point2D",
     "PostProcessedPlate",
+    "QualityIssue",
+    "QualityThresholds",
     "RedactionConfig",
     "RedactionMode",
     "WatchlistCategory",
     "WatchlistEntry",
     "WatchlistMatch",
     "WatchlistMatcher",
+    "assess_image_quality",
     "decode_image_to_grayscale",
     "extract_plate_crop",
     "normalize_plate_crop",
