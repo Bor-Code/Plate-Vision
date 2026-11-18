@@ -21,6 +21,11 @@ from plate_vision.evaluation.monitoring import (
     compute_expected_calibration_error,
     compute_population_stability_index,
 )
+from plate_vision.evaluation.shadow import (
+    ShadowComparisonRecord,
+    ShadowEvaluationSummary,
+    ShadowPipelineRunner,
+)
 
 __all__ = [
     "CalibrationReport",
@@ -30,6 +35,9 @@ __all__ = [
     "EndToEndMetrics",
     "EvaluationReport",
     "ReliabilityBin",
+    "ShadowComparisonRecord",
+    "ShadowEvaluationSummary",
+    "ShadowPipelineRunner",
     "TemperatureScaler",
     "WorstSampleEntry",
     "build_evaluation_report",
