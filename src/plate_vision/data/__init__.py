@@ -4,6 +4,14 @@ from plate_vision.data.active_learning import (
     HardExampleCandidate,
     SelectionReason,
 )
+from plate_vision.data.adapters import (
+    JsonlManifestAdapter,
+    OpenAlprSidecarAdapter,
+    RealDatasetAdapterProtocol,
+    RealDatasetFormat,
+    YoloDirectoryAdapter,
+    load_real_dataset,
+)
 from plate_vision.data.augmentation import AugmentationConfig, AugmentationPipeline
 from plate_vision.data.deduplication import deduplicate_records
 from plate_vision.data.exporters import export_recognizer_manifests, export_yolo_dataset
@@ -99,15 +107,20 @@ __all__ = [
     "HardExampleCandidate",
     "ImageMetadata",
     "ItalyCountryProfile",
+    "JsonlManifestAdapter",
     "LocalFileStorage",
     "NetherlandsCountryProfile",
+    "OpenAlprSidecarAdapter",
     "PlateAnnotation",
+    "RealDatasetAdapterProtocol",
+    "RealDatasetFormat",
     "SelectionReason",
     "SpainCountryProfile",
     "SplitDataset",
     "SyntheticPlateConfig",
     "TurkeyCountryProfile",
     "UnitedKingdomCountryProfile",
+    "YoloDirectoryAdapter",
     "allocate_stratum_counts",
     "apply_synthetic_effects",
     "deduplicate_records",
@@ -120,6 +133,7 @@ __all__ = [
     "get_country_profile",
     "ingest_manifest_records",
     "inspect_image_bytes",
+    "load_real_dataset",
     "parse_jpeg_dimensions",
     "parse_png_dimensions",
     "parse_webp_dimensions",
