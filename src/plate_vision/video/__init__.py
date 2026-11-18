@@ -4,6 +4,13 @@ from plate_vision.video.analytics import (
     TrafficAnalyticsReport,
     VideoTrafficAnalyzer,
 )
+from plate_vision.video.parking import (
+    GateAccessDecision,
+    GateDirection,
+    ParkingLotManager,
+    ParkingSession,
+    ParkingTariffConfig,
+)
 from plate_vision.video.processor import (
     VideoFrameInput,
     VideoFrameResult,
@@ -24,7 +31,12 @@ from plate_vision.video.voting import (
 
 __all__ = [
     "CalibrationZone",
+    "GateAccessDecision",
+    "GateDirection",
     "MultiObjectTrackerProtocol",
+    "ParkingLotManager",
+    "ParkingSession",
+    "ParkingTariffConfig",
     "PlateTracker",
     "StabilizedTrackPrediction",
     "TemporalVoter",
