@@ -22,6 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
+prepare_dataset = "plate_vision.data.cli:main"
 train_detector = "plate_vision.detection.cli:main"
 train_recognizer = "plate_vision.recognition.cli:main"
 export_models = "plate_vision.export.cli:main"
