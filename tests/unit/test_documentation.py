@@ -35,3 +35,27 @@ def test_architecture_doc_contains_mermaid_diagrams() -> None:
     arch_text = (ROOT_DIR / "docs" / "architecture.md").read_text(encoding="utf-8")
     assert "```mermaid" in arch_text
     assert "PlateVisionPipeline" in arch_text
+
+
+def test_serving_and_readme_document_new_endpoints_and_cli() -> None:
+    serving_text = (ROOT_DIR / "docs" / "serving.md").read_text(encoding="utf-8")
+    for endpoint in (
+        "/v1/predict/video",
+        "/v1/audit/recent",
+        "/v1/watchlist/check",
+        "/v1/monitoring/drift",
+        "X-API-Key",
+        "X-Request-ID",
+    ):
+        assert endpoint in serving_text
+
+    readme_text = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
+    for cli_cmd in (
+        "prepare_dataset",
+        "train_detector",
+        "train_recognizer",
+        "export_models",
+        "evaluate_pipeline",
+        "predict_plate",
+    ):
+        assert cli_cmd in readme_text
