@@ -25,6 +25,8 @@ from plate_vision.serving.schemas import (
     CorridorCheckpointEventRequest,
     DriftEvaluationRequest,
     HealthStatusResponse,
+    JourneyQueryRequest,
+    LezInspectRequest,
     ParkingGateEventRequest,
     ParkingStatusResponse,
     ReadinessStatusResponse,
@@ -53,6 +55,16 @@ from plate_vision.video.corridor import (
     CorridorEntryObservation,
     CorridorPassageRecord,
     HighwayCorridorMonitor,
+)
+from plate_vision.video.journey import (
+    CameraSighting,
+    MultiCameraJourneyTracker,
+    VehicleJourneyReport,
+)
+from plate_vision.video.lez import (
+    LezEnforcementSummary,
+    LezInspectionResult,
+    LowEmissionZoneInspector,
 )
 from plate_vision.video.parking import GateAccessDecision, ParkingLotManager
 from plate_vision.video.processor import (
@@ -318,6 +330,8 @@ def create_app(
     drift_detector: DriftDetector | None = None,
     parking_manager: ParkingLotManager | None = None,
     corridor_monitor: HighwayCorridorMonitor | None = None,
+    lez_inspector: LowEmissionZoneInspector | None = None,
+    journey_tracker: MultiCameraJourneyTracker | None = None,
 ) -> FastAPI:
     active_config = config if config is not None else ServingConfig()
     active_metrics = metrics if metrics is not None else PrometheusMetricsRegistry()
@@ -345,6 +359,8 @@ def create_app(
         else ParkingLotManager(watchlist=active_watchlist)
     )
     active_corridor = corridor_monitor if corridor_monitor is not None else HighwayCorridorMonitor()
+    active_lez = lez_inspector if lez_inspector is not None else LowEmissionZoneInspector()
+    active_journey = journey_tracker if journey_tracker is not None else MultiCameraJourneyTracker()
     active_pipeline = pipeline
 
     app = FastAPI(
@@ -705,6 +721,49 @@ def create_app(
         summary = active_corridor.summarize()
         active_metrics.record_request("/v1/corridor/summary", 200, 0.1)
         return summary
+
+    @app.post("/v1/lez/inspect", response_model=LezInspectionResult)
+    async def lez_inspect(
+        payload: LezInspectRequest,
+    ) -> LezInspectionResult:
+        start = time.perf_counter()
+        result = active_lez.inspect(
+            payload.plate_text,
+            country_code=payload.country_code,
+            day_of_month=payload.day_of_month,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/lez/inspect", 200, elapsed_ms)
+        return result
+
+    @app.get("/v1/lez/summary", response_model=LezEnforcementSummary)
+    async def lez_summary() -> LezEnforcementSummary:
+        summary = active_lez.summarize()
+        active_metrics.record_request("/v1/lez/summary", 200, 0.1)
+        return summary
+
+    @app.post("/v1/journey/sighting", response_model=CameraSighting)
+    async def journey_sighting(
+        payload: CameraSighting,
+    ) -> CameraSighting:
+        start = time.perf_counter()
+        recorded = active_journey.record_sighting(payload)
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/journey/sighting", 200, elapsed_ms)
+        return recorded
+
+    @app.post("/v1/journey/query", response_model=VehicleJourneyReport)
+    async def journey_query(
+        payload: JourneyQueryRequest,
+    ) -> VehicleJourneyReport:
+        start = time.perf_counter()
+        report = active_journey.build_journey(
+            payload.plate_text,
+            country_code=payload.country_code,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/journey/query", 200, elapsed_ms)
+        return report
 
     return app
 

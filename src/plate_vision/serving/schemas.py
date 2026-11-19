@@ -117,6 +117,21 @@ class CorridorCheckpointEventRequest(BaseModel):
     timestamp_ms: int = Field(ge=0)
 
 
+class LezInspectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    day_of_month: int = Field(default=1, ge=1, le=31)
+
+
+class JourneyQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+
+
 __all__ = [
     "AuditLogResponse",
     "BatchPredictRequest",
@@ -124,6 +139,8 @@ __all__ = [
     "CorridorCheckpointEventRequest",
     "DriftEvaluationRequest",
     "HealthStatusResponse",
+    "JourneyQueryRequest",
+    "LezInspectRequest",
     "ParkingGateEventRequest",
     "ParkingStatusResponse",
     "ReadinessStatusResponse",
