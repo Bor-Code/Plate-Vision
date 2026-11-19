@@ -11,6 +11,14 @@ from plate_vision.video.corridor import (
     CorridorPassageRecord,
     HighwayCorridorMonitor,
 )
+from plate_vision.video.journey import (
+    CameraNode,
+    CameraSighting,
+    JourneyLeg,
+    MultiCameraJourneyTracker,
+    VehicleJourneyReport,
+    haversine_distance_km,
+)
 from plate_vision.video.lez import (
     EmissionClass,
     LezEnforcementSummary,
@@ -46,6 +54,8 @@ from plate_vision.video.voting import (
 
 __all__ = [
     "CalibrationZone",
+    "CameraNode",
+    "CameraSighting",
     "CorridorAnalyticsSummary",
     "CorridorConfig",
     "CorridorEntryObservation",
@@ -54,10 +64,12 @@ __all__ = [
     "GateAccessDecision",
     "GateDirection",
     "HighwayCorridorMonitor",
+    "JourneyLeg",
     "LezEnforcementSummary",
     "LezInspectionResult",
     "LowEmissionZoneConfig",
     "LowEmissionZoneInspector",
+    "MultiCameraJourneyTracker",
     "MultiObjectTrackerProtocol",
     "ParkingLotManager",
     "ParkingSession",
@@ -70,10 +82,12 @@ __all__ = [
     "TrackedPlateDetection",
     "TrafficAnalyticsReport",
     "VehicleEmissionProfile",
+    "VehicleJourneyReport",
     "VideoFrameInput",
     "VideoFrameResult",
     "VideoStreamProcessor",
     "VideoStreamSummary",
     "VideoTrafficAnalyzer",
     "VoteObservation",
+    "haversine_distance_km",
 ]
