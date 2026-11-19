@@ -20,6 +20,10 @@ def test_eu_profiles_synthetic_generation_and_multi_country_postprocess() -> Non
         "CA",
         "JP",
         "KR",
+        "BR",
+        "MX",
+        "AE",
+        "SA",
     )
 
     es_res = processor.resolve("9234 8CD")

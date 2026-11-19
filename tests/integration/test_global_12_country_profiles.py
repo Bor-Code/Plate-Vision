@@ -7,8 +7,8 @@ from plate_vision.pipeline.postprocess import MultiCountryPostProcessor
 
 def test_global_12_country_profiles_resolution_and_synthesis() -> None:
     processor = MultiCountryPostProcessor()
-    assert len(processor.country_codes) == 12
-    assert set(processor.country_codes) == {
+    assert len(processor.country_codes) == 16
+    assert {
         "TR",
         "DE",
         "GB",
@@ -21,7 +21,7 @@ def test_global_12_country_profiles_resolution_and_synthesis() -> None:
         "CA",
         "JP",
         "KR",
-    }
+    }.issubset(set(processor.country_codes))
 
     us_res = processor.resolve("7XYZ 4S6")
     assert us_res.country_code == "US"

@@ -57,6 +57,10 @@ class MultiCountryPostProcessor:
             "CA",
             "JP",
             "KR",
+            "BR",
+            "MX",
+            "AE",
+            "SA",
         ),
         registry: CountryProfileRegistry | None = None,
     ) -> None:
