@@ -11,6 +11,14 @@ from plate_vision.video.corridor import (
     CorridorPassageRecord,
     HighwayCorridorMonitor,
 )
+from plate_vision.video.lez import (
+    EmissionClass,
+    LezEnforcementSummary,
+    LezInspectionResult,
+    LowEmissionZoneConfig,
+    LowEmissionZoneInspector,
+    VehicleEmissionProfile,
+)
 from plate_vision.video.parking import (
     GateAccessDecision,
     GateDirection,
@@ -42,9 +50,14 @@ __all__ = [
     "CorridorConfig",
     "CorridorEntryObservation",
     "CorridorPassageRecord",
+    "EmissionClass",
     "GateAccessDecision",
     "GateDirection",
     "HighwayCorridorMonitor",
+    "LezEnforcementSummary",
+    "LezInspectionResult",
+    "LowEmissionZoneConfig",
+    "LowEmissionZoneInspector",
     "MultiObjectTrackerProtocol",
     "ParkingLotManager",
     "ParkingSession",
@@ -56,6 +69,7 @@ __all__ = [
     "TrackState",
     "TrackedPlateDetection",
     "TrafficAnalyticsReport",
+    "VehicleEmissionProfile",
     "VideoFrameInput",
     "VideoFrameResult",
     "VideoStreamProcessor",
