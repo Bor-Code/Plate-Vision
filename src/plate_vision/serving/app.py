@@ -22,8 +22,11 @@ from plate_vision.serving.schemas import (
     AuditLogResponse,
     BatchPredictRequest,
     BatchPredictResponse,
+    CorridorCheckpointEventRequest,
     DriftEvaluationRequest,
     HealthStatusResponse,
+    ParkingGateEventRequest,
+    ParkingStatusResponse,
     ReadinessStatusResponse,
     SinglePredictRequest,
     StructuredErrorResponse,
@@ -45,6 +48,13 @@ from plate_vision.utils.storage import (
     PredictionStorageProtocol,
     build_audit_record,
 )
+from plate_vision.video.corridor import (
+    CorridorAnalyticsSummary,
+    CorridorEntryObservation,
+    CorridorPassageRecord,
+    HighwayCorridorMonitor,
+)
+from plate_vision.video.parking import GateAccessDecision, ParkingLotManager
 from plate_vision.video.processor import (
     VideoFrameInput,
     VideoStreamProcessor,
@@ -306,6 +316,8 @@ def create_app(
     storage: PredictionStorageProtocol | None = None,
     watchlist: WatchlistMatcher | None = None,
     drift_detector: DriftDetector | None = None,
+    parking_manager: ParkingLotManager | None = None,
+    corridor_monitor: HighwayCorridorMonitor | None = None,
 ) -> FastAPI:
     active_config = config if config is not None else ServingConfig()
     active_metrics = metrics if metrics is not None else PrometheusMetricsRegistry()
@@ -327,6 +339,12 @@ def create_app(
         )
     )
     active_watchlist = watchlist if watchlist is not None else WatchlistMatcher()
+    active_parking = (
+        parking_manager
+        if parking_manager is not None
+        else ParkingLotManager(watchlist=active_watchlist)
+    )
+    active_corridor = corridor_monitor if corridor_monitor is not None else HighwayCorridorMonitor()
     active_pipeline = pipeline
 
     app = FastAPI(
@@ -611,6 +629,82 @@ def create_app(
         )
         active_metrics.record_request("/v1/monitoring/drift", 200, 0.1)
         return report
+
+    @app.post("/v1/parking/entry", response_model=GateAccessDecision)
+    async def parking_entry(
+        payload: ParkingGateEventRequest,
+    ) -> GateAccessDecision:
+        start = time.perf_counter()
+        decision = active_parking.record_entry(
+            payload.plate_text,
+            country_code=payload.country_code,
+            timestamp_ms=payload.timestamp_ms,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/parking/entry", 200, elapsed_ms)
+        return decision
+
+    @app.post("/v1/parking/exit", response_model=GateAccessDecision)
+    async def parking_exit(
+        payload: ParkingGateEventRequest,
+    ) -> GateAccessDecision:
+        start = time.perf_counter()
+        decision = active_parking.record_exit(
+            payload.plate_text,
+            country_code=payload.country_code,
+            timestamp_ms=payload.timestamp_ms,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/parking/exit", 200, elapsed_ms)
+        return decision
+
+    @app.get("/v1/parking/status", response_model=ParkingStatusResponse)
+    async def parking_status() -> ParkingStatusResponse:
+        status = ParkingStatusResponse(
+            occupancy_count=active_parking.occupancy_count,
+            capacity=active_parking.capacity,
+            total_revenue=active_parking.total_revenue(),
+            active_sessions=active_parking.active_sessions(),
+            closed_sessions=active_parking.closed_sessions(),
+        )
+        active_metrics.record_request("/v1/parking/status", 200, 0.1)
+        return status
+
+    @app.post("/v1/corridor/entry", response_model=CorridorEntryObservation)
+    async def corridor_entry(
+        payload: CorridorCheckpointEventRequest,
+    ) -> CorridorEntryObservation:
+        start = time.perf_counter()
+        observation = active_corridor.record_entry(
+            payload.plate_text,
+            country_code=payload.country_code,
+            checkpoint_id=payload.checkpoint_id,
+            timestamp_ms=payload.timestamp_ms,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/corridor/entry", 200, elapsed_ms)
+        return observation
+
+    @app.post("/v1/corridor/exit", response_model=CorridorPassageRecord)
+    async def corridor_exit(
+        payload: CorridorCheckpointEventRequest,
+    ) -> CorridorPassageRecord:
+        start = time.perf_counter()
+        record = active_corridor.record_exit(
+            payload.plate_text,
+            country_code=payload.country_code,
+            checkpoint_id=payload.checkpoint_id,
+            timestamp_ms=payload.timestamp_ms,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/corridor/exit", 200, elapsed_ms)
+        return record
+
+    @app.get("/v1/corridor/summary", response_model=CorridorAnalyticsSummary)
+    async def corridor_summary() -> CorridorAnalyticsSummary:
+        summary = active_corridor.summarize()
+        active_metrics.record_request("/v1/corridor/summary", 200, 0.1)
+        return summary
 
     return app
 

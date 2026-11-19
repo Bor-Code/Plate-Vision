@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from plate_vision.pipeline.runner import PipelineInferenceResult
 from plate_vision.pipeline.watchlist import WatchlistMatch
 from plate_vision.utils.storage import PredictionAuditRecord
+from plate_vision.video.parking import ParkingSession
 
 
 class SinglePredictRequest(BaseModel):
@@ -89,12 +90,42 @@ class StructuredErrorResponse(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class ParkingGateEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    timestamp_ms: int = Field(ge=0)
+
+
+class ParkingStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    occupancy_count: int = Field(ge=0)
+    capacity: int = Field(ge=1)
+    total_revenue: float = Field(ge=0.0)
+    active_sessions: tuple[ParkingSession, ...]
+    closed_sessions: tuple[ParkingSession, ...]
+
+
+class CorridorCheckpointEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    checkpoint_id: str = Field(default="CP_01", min_length=1)
+    timestamp_ms: int = Field(ge=0)
+
+
 __all__ = [
     "AuditLogResponse",
     "BatchPredictRequest",
     "BatchPredictResponse",
+    "CorridorCheckpointEventRequest",
     "DriftEvaluationRequest",
     "HealthStatusResponse",
+    "ParkingGateEventRequest",
+    "ParkingStatusResponse",
     "ReadinessStatusResponse",
     "SinglePredictRequest",
     "StructuredErrorResponse",
