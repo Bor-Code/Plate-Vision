@@ -95,6 +95,22 @@ UAE_PATTERNS: Final[tuple[Pattern[str], ...]] = (re.compile(r"^([A-Z]{1,2})([1-9
 
 SAUDI_ARABIA_PATTERNS: Final[tuple[Pattern[str], ...]] = (re.compile(r"^([0-9]{4})([A-Z]{3})$"),)
 
+INDIA_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{2})([0-9]{2})([A-Z]{2})([0-9]{4})$"),
+)
+
+AUSTRALIA_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{2})([0-9]{2})([A-Z]{2})$"),
+)
+
+POLAND_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{2})([0-9]{4})([A-Z]{1})$"),
+)
+
+SWEDEN_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{3})([0-9]{2})([A-Z]{1})$"),
+)
+
 
 class CountryProfileProtocol(Protocol):
     @property
@@ -1050,6 +1066,105 @@ class SaudiArabiaCountryProfile:
         return f"{digits}{letters}"
 
 
+class _FixedLayoutCountryProfile:
+    _code: str = ""
+    _patterns: tuple[Pattern[str], ...] = ()
+    _expected_length: int = 0
+    _layouts: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] = ()
+
+    @property
+    def country_code(self) -> str:
+        return self._code
+
+    @property
+    def charset(self) -> str:
+        return STANDARD_LATIN_CHARSET
+
+    @property
+    def regex_patterns(self) -> tuple[Pattern[str], ...]:
+        return self._patterns
+
+    @property
+    def digit_to_alpha_map(self) -> Mapping[str, str]:
+        return TURKEY_DIGIT_TO_ALPHA
+
+    @property
+    def alpha_to_digit_map(self) -> Mapping[str, str]:
+        return TURKEY_ALPHA_TO_DIGIT
+
+    def normalize(self, raw_text: str) -> str:
+        return _normalize_alnum(raw_text)
+
+    def is_valid(self, plate_text: str) -> bool:
+        normalized = self.normalize(plate_text)
+        return any(p.fullmatch(normalized) is not None for p in self._patterns)
+
+    def correct_confusions(self, raw_text: str) -> str:
+        normalized = self.normalize(raw_text)
+        if self.is_valid(normalized) or len(normalized) != self._expected_length:
+            return normalized
+        return _apply_positional_layouts(
+            normalized,
+            self._layouts,
+            self.alpha_to_digit_map,
+            self.digit_to_alpha_map,
+            self._patterns,
+        )
+
+
+class IndiaCountryProfile(_FixedLayoutCountryProfile):
+    _code = "IN"
+    _patterns = INDIA_PATTERNS
+    _expected_length = 10
+    _layouts = (((2, 3, 6, 7, 8, 9), (0, 1, 4, 5)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        state = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        rto = f"{rng.randint(1, 99):02d}"
+        series = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        number = f"{rng.randint(1, 9999):04d}"
+        return f"{state}{rto}{series}{number}"
+
+
+class AustraliaCountryProfile(_FixedLayoutCountryProfile):
+    _code = "AU"
+    _patterns = AUSTRALIA_PATTERNS
+    _expected_length = 6
+    _layouts = (((2, 3), (0, 1, 4, 5)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        digits = f"{rng.randint(0, 99):02d}"
+        suffix = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        return f"{prefix}{digits}{suffix}"
+
+
+class PolandCountryProfile(_FixedLayoutCountryProfile):
+    _code = "PL"
+    _patterns = POLAND_PATTERNS
+    _expected_length = 7
+    _layouts = (((2, 3, 4, 5), (0, 1, 6)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        digits = f"{rng.randint(0, 9999):04d}"
+        suffix = rng.choice(STANDARD_LETTERS)
+        return f"{prefix}{digits}{suffix}"
+
+
+class SwedenCountryProfile(_FixedLayoutCountryProfile):
+    _code = "SE"
+    _patterns = SWEDEN_PATTERNS
+    _expected_length = 6
+    _layouts = (((3, 4), (0, 1, 2, 5)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        prefix = "".join(rng.choice(STANDARD_LETTERS) for _ in range(3))
+        digits = f"{rng.randint(0, 99):02d}"
+        suffix = rng.choice(STANDARD_LETTERS)
+        return f"{prefix}{digits}{suffix}"
+
+
 class CountryProfileRegistry:
     def __init__(self) -> None:
         self._profiles: dict[str, CountryProfileProtocol] = {}
@@ -1091,6 +1206,10 @@ DEFAULT_PROFILE_REGISTRY.register(BrazilCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(MexicoCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(UnitedArabEmiratesCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(SaudiArabiaCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(IndiaCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(AustraliaCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(PolandCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(SwedenCountryProfile())
 
 
 def register_country_profile(profile: CountryProfileProtocol) -> None:
@@ -1102,19 +1221,23 @@ def get_country_profile(country_code: str) -> CountryProfileProtocol:
 
 
 __all__ = [
+    "AUSTRALIA_PATTERNS",
     "AZERBAIJAN_PATTERNS",
     "BRAZIL_PATTERNS",
     "CANADA_PATTERNS",
     "FRANCE_PATTERNS",
     "GERMANY_PATTERNS",
+    "INDIA_PATTERNS",
     "ITALY_PATTERNS",
     "JAPAN_PATTERNS",
     "MEXICO_PATTERNS",
     "NETHERLANDS_PATTERNS",
+    "POLAND_PATTERNS",
     "SAUDI_ARABIA_PATTERNS",
     "SOUTH_KOREA_PATTERNS",
     "SPAIN_PATTERNS",
     "STANDARD_LATIN_CHARSET",
+    "SWEDEN_PATTERNS",
     "TURKEY_ALPHA_TO_DIGIT",
     "TURKEY_CHARSET",
     "TURKEY_DIGIT_TO_ALPHA",
@@ -1122,6 +1245,7 @@ __all__ = [
     "UAE_PATTERNS",
     "UK_PATTERNS",
     "US_PATTERNS",
+    "AustraliaCountryProfile",
     "AzerbaijanCountryProfile",
     "BrazilCountryProfile",
     "CanadaCountryProfile",
@@ -1129,13 +1253,16 @@ __all__ = [
     "CountryProfileRegistry",
     "FranceCountryProfile",
     "GermanyCountryProfile",
+    "IndiaCountryProfile",
     "ItalyCountryProfile",
     "JapanCountryProfile",
     "MexicoCountryProfile",
     "NetherlandsCountryProfile",
+    "PolandCountryProfile",
     "SaudiArabiaCountryProfile",
     "SouthKoreaCountryProfile",
     "SpainCountryProfile",
+    "SwedenCountryProfile",
     "TurkeyCountryProfile",
     "UnitedArabEmiratesCountryProfile",
     "UnitedKingdomCountryProfile",
