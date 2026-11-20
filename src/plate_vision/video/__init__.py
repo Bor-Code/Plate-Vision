@@ -11,6 +11,14 @@ from plate_vision.video.corridor import (
     CorridorPassageRecord,
     HighwayCorridorMonitor,
 )
+from plate_vision.video.fleet import (
+    FleetCheckInObservation,
+    FleetOperationsSummary,
+    FleetSlaConfig,
+    FleetTerminalController,
+    FleetTurnaroundRecord,
+    TerminalZoneType,
+)
 from plate_vision.video.journey import (
     CameraNode,
     CameraSighting,
@@ -69,6 +77,11 @@ __all__ = [
     "CorridorEntryObservation",
     "CorridorPassageRecord",
     "EmissionClass",
+    "FleetCheckInObservation",
+    "FleetOperationsSummary",
+    "FleetSlaConfig",
+    "FleetTerminalController",
+    "FleetTurnaroundRecord",
     "FrameHealthAssessment",
     "GateAccessDecision",
     "GateDirection",
@@ -87,6 +100,7 @@ __all__ = [
     "StabilizedTrackPrediction",
     "TamperSignal",
     "TemporalVoter",
+    "TerminalZoneType",
     "TrackAnalyticsSummary",
     "TrackState",
     "TrackedPlateDetection",
