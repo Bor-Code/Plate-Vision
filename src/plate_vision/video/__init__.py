@@ -40,6 +40,12 @@ from plate_vision.video.processor import (
     VideoStreamProcessor,
     VideoStreamSummary,
 )
+from plate_vision.video.tamper import (
+    CameraHealthThresholds,
+    CameraTamperMonitor,
+    FrameHealthAssessment,
+    TamperSignal,
+)
 from plate_vision.video.tracker import (
     MultiObjectTrackerProtocol,
     PlateTracker,
@@ -54,13 +60,16 @@ from plate_vision.video.voting import (
 
 __all__ = [
     "CalibrationZone",
+    "CameraHealthThresholds",
     "CameraNode",
     "CameraSighting",
+    "CameraTamperMonitor",
     "CorridorAnalyticsSummary",
     "CorridorConfig",
     "CorridorEntryObservation",
     "CorridorPassageRecord",
     "EmissionClass",
+    "FrameHealthAssessment",
     "GateAccessDecision",
     "GateDirection",
     "HighwayCorridorMonitor",
@@ -76,6 +85,7 @@ __all__ = [
     "ParkingTariffConfig",
     "PlateTracker",
     "StabilizedTrackPrediction",
+    "TamperSignal",
     "TemporalVoter",
     "TrackAnalyticsSummary",
     "TrackState",
