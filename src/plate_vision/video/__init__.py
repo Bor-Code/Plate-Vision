@@ -4,6 +4,10 @@ from plate_vision.video.analytics import (
     TrafficAnalyticsReport,
     VideoTrafficAnalyzer,
 )
+from plate_vision.video.cli import (
+    build_video_predict_parser,
+    run_predict_video_cli,
+)
 from plate_vision.video.corridor import (
     CorridorAnalyticsSummary,
     CorridorConfig,
@@ -113,5 +117,7 @@ __all__ = [
     "VideoStreamSummary",
     "VideoTrafficAnalyzer",
     "VoteObservation",
+    "build_video_predict_parser",
     "haversine_distance_km",
+    "run_predict_video_cli",
 ]
