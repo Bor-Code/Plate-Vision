@@ -7,7 +7,7 @@ from plate_vision.pipeline.postprocess import MultiCountryPostProcessor
 
 def test_global_16_country_profiles_resolution_and_synthesis() -> None:
     processor = MultiCountryPostProcessor()
-    assert len(processor.country_codes) == 20
+    assert len(processor.country_codes) == 24
     assert {
         "TR",
         "DE",

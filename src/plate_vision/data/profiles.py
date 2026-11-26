@@ -111,6 +111,20 @@ SWEDEN_PATTERNS: Final[tuple[Pattern[str], ...]] = (
     re.compile(r"^([A-Z]{3})([0-9]{2})([A-Z]{1})$"),
 )
 
+SWITZERLAND_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{2})([1-9][0-9]{5})$"),
+)
+
+AUSTRIA_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([A-Z]{2})([0-9]{3})([A-Z]{1})$"),
+)
+
+BELGIUM_PATTERNS: Final[tuple[Pattern[str], ...]] = (re.compile(r"^([0-9]{3})([A-Z]{3})$"),)
+
+PORTUGAL_PATTERNS: Final[tuple[Pattern[str], ...]] = (
+    re.compile(r"^([0-9]{2})([A-Z]{2})([0-9]{2})$"),
+)
+
 
 class CountryProfileProtocol(Protocol):
     @property
@@ -1165,6 +1179,56 @@ class SwedenCountryProfile(_FixedLayoutCountryProfile):
         return f"{prefix}{digits}{suffix}"
 
 
+class SwitzerlandCountryProfile(_FixedLayoutCountryProfile):
+    _code = "CH"
+    _patterns = SWITZERLAND_PATTERNS
+    _expected_length = 8
+    _layouts = (((2, 3, 4, 5, 6, 7), (0, 1)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        canton = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        number = f"{rng.randint(100000, 999999)}"
+        return f"{canton}{number}"
+
+
+class AustriaCountryProfile(_FixedLayoutCountryProfile):
+    _code = "AT"
+    _patterns = AUSTRIA_PATTERNS
+    _expected_length = 6
+    _layouts = (((2, 3, 4), (0, 1, 5)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        district = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        digits = f"{rng.randint(0, 999):03d}"
+        suffix = rng.choice(STANDARD_LETTERS)
+        return f"{district}{digits}{suffix}"
+
+
+class BelgiumCountryProfile(_FixedLayoutCountryProfile):
+    _code = "BE"
+    _patterns = BELGIUM_PATTERNS
+    _expected_length = 6
+    _layouts = (((0, 1, 2), (3, 4, 5)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        digits = f"{rng.randint(0, 999):03d}"
+        letters = "".join(rng.choice(STANDARD_LETTERS) for _ in range(3))
+        return f"{digits}{letters}"
+
+
+class PortugalCountryProfile(_FixedLayoutCountryProfile):
+    _code = "PT"
+    _patterns = PORTUGAL_PATTERNS
+    _expected_length = 6
+    _layouts = (((0, 1, 4, 5), (2, 3)),)
+
+    def sample_plate(self, rng: random.Random) -> str:
+        head = f"{rng.randint(0, 99):02d}"
+        mid = "".join(rng.choice(STANDARD_LETTERS) for _ in range(2))
+        tail = f"{rng.randint(0, 99):02d}"
+        return f"{head}{mid}{tail}"
+
+
 class CountryProfileRegistry:
     def __init__(self) -> None:
         self._profiles: dict[str, CountryProfileProtocol] = {}
@@ -1210,6 +1274,10 @@ DEFAULT_PROFILE_REGISTRY.register(IndiaCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(AustraliaCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(PolandCountryProfile())
 DEFAULT_PROFILE_REGISTRY.register(SwedenCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(SwitzerlandCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(AustriaCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(BelgiumCountryProfile())
+DEFAULT_PROFILE_REGISTRY.register(PortugalCountryProfile())
 
 
 def register_country_profile(profile: CountryProfileProtocol) -> None:
@@ -1222,7 +1290,9 @@ def get_country_profile(country_code: str) -> CountryProfileProtocol:
 
 __all__ = [
     "AUSTRALIA_PATTERNS",
+    "AUSTRIA_PATTERNS",
     "AZERBAIJAN_PATTERNS",
+    "BELGIUM_PATTERNS",
     "BRAZIL_PATTERNS",
     "CANADA_PATTERNS",
     "FRANCE_PATTERNS",
@@ -1233,11 +1303,13 @@ __all__ = [
     "MEXICO_PATTERNS",
     "NETHERLANDS_PATTERNS",
     "POLAND_PATTERNS",
+    "PORTUGAL_PATTERNS",
     "SAUDI_ARABIA_PATTERNS",
     "SOUTH_KOREA_PATTERNS",
     "SPAIN_PATTERNS",
     "STANDARD_LATIN_CHARSET",
     "SWEDEN_PATTERNS",
+    "SWITZERLAND_PATTERNS",
     "TURKEY_ALPHA_TO_DIGIT",
     "TURKEY_CHARSET",
     "TURKEY_DIGIT_TO_ALPHA",
@@ -1246,7 +1318,9 @@ __all__ = [
     "UK_PATTERNS",
     "US_PATTERNS",
     "AustraliaCountryProfile",
+    "AustriaCountryProfile",
     "AzerbaijanCountryProfile",
+    "BelgiumCountryProfile",
     "BrazilCountryProfile",
     "CanadaCountryProfile",
     "CountryProfileProtocol",
@@ -1259,10 +1333,12 @@ __all__ = [
     "MexicoCountryProfile",
     "NetherlandsCountryProfile",
     "PolandCountryProfile",
+    "PortugalCountryProfile",
     "SaudiArabiaCountryProfile",
     "SouthKoreaCountryProfile",
     "SpainCountryProfile",
     "SwedenCountryProfile",
+    "SwitzerlandCountryProfile",
     "TurkeyCountryProfile",
     "UnitedArabEmiratesCountryProfile",
     "UnitedKingdomCountryProfile",
