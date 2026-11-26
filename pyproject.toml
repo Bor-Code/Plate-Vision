@@ -28,6 +28,7 @@ train_recognizer = "plate_vision.recognition.cli:main"
 export_models = "plate_vision.export.cli:main"
 evaluate_pipeline = "plate_vision.evaluation.cli:main"
 predict_plate = "plate_vision.pipeline.cli:main"
+predict_video = "plate_vision.video.cli:main"
 
 
 [dependency-groups]
