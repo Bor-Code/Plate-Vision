@@ -69,6 +69,10 @@ class MultiCountryPostProcessor:
             "AT",
             "BE",
             "PT",
+            "CN",
+            "RU",
+            "CZ",
+            "SG",
         ),
         registry: CountryProfileRegistry | None = None,
     ) -> None:

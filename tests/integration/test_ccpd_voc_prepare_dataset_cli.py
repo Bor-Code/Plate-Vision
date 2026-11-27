@@ -68,7 +68,7 @@ def test_prepare_dataset_cli_supports_ccpd_filename(tmp_path: Path) -> None:
             "--synthetic-count",
             "0",
             "--country-code",
-            "TR",
+            "CN",
         ]
     )
     assert exit_code == 0
