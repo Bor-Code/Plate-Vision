@@ -59,6 +59,7 @@ class RealDatasetFormat(StrEnum):
     OPENALPR_SIDECAR = "openalpr_sidecar"
     PASCAL_VOC_XML = "pascal_voc_xml"
     CCPD_FILENAME = "ccpd_filename"
+    COCO_JSON = "coco_json"
 
 
 @runtime_checkable
@@ -601,6 +602,196 @@ class CcpdFilenameAdapter:
         return ingest_manifest_records(raw_records, config=config)
 
 
+class CocoJsonAdapter:
+    def __init__(
+        self,
+        annotations_filename: str | None = None,
+        default_country_code: str = "TR",
+        source_dataset: str = "real_coco",
+        default_plate_text: str = "UNKNOWN",
+    ) -> None:
+        self.annotations_filename = annotations_filename
+        self.default_country_code = default_country_code.strip().upper()
+        self.source_dataset = source_dataset
+        self.default_plate_text = default_plate_text
+
+    def _find_coco_file(self, dataset_dir: Path) -> Path:
+        if self.annotations_filename is not None:
+            explicit = dataset_dir / self.annotations_filename
+            if explicit.is_file():
+                return explicit
+            raise DataIOError(
+                f"COCO annotations file does not exist: {explicit}",
+                details={"path": str(explicit)},
+            )
+        candidates = (
+            dataset_dir / "_annotations.coco.json",
+            dataset_dir / "annotations.json",
+            dataset_dir / "annotations" / "instances_default.json",
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        raise DataIOError(
+            f"No COCO annotations file found in directory: {dataset_dir}",
+            details={"path": str(dataset_dir)},
+        )
+
+    @staticmethod
+    def _resolve_image_path(dataset_dir: Path, file_name: str) -> Path:
+        direct = dataset_dir / file_name
+        if direct.is_file():
+            return direct
+        return dataset_dir / "images" / file_name
+
+    @staticmethod
+    def _extract_corners(ann: dict[str, Any]) -> tuple[tuple[float, float], ...] | None:
+        raw_corners = ann.get("corners")
+        if isinstance(raw_corners, list) and len(raw_corners) == 4:
+            parsed_corners: list[tuple[float, float]] = []
+            for pt in raw_corners:
+                if not isinstance(pt, list | tuple) or len(pt) != 2:
+                    return None
+                parsed_corners.append((float(pt[0]), float(pt[1])))
+            return tuple(parsed_corners)
+
+        seg = ann.get("segmentation")
+        if isinstance(seg, list) and seg and isinstance(seg[0], list) and len(seg[0]) == 8:
+            coords = seg[0]
+            return (
+                (float(coords[0]), float(coords[1])),
+                (float(coords[2]), float(coords[3])),
+                (float(coords[4]), float(coords[5])),
+                (float(coords[6]), float(coords[7])),
+            )
+        return None
+
+    def load_records(
+        self,
+        dataset_dir: Path,
+        config: DataConfig,
+    ) -> list[DatasetRecord]:
+        if not dataset_dir.exists() or not dataset_dir.is_dir():
+            raise DataIOError(
+                f"Dataset directory does not exist: {dataset_dir}",
+                details={"path": str(dataset_dir)},
+            )
+
+        coco_path = self._find_coco_file(dataset_dir)
+        try:
+            payload = json.loads(coco_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise DataIOError(
+                f"Failed to read COCO annotations file: {coco_path}",
+                details={"path": str(coco_path), "reason": str(exc)},
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise DatasetValidationError(
+                f"Malformed JSON in COCO annotations file: {coco_path}",
+                details={"path": str(coco_path), "reason": str(exc)},
+            ) from exc
+
+        if not isinstance(payload, dict):
+            raise DatasetValidationError(
+                f"COCO annotations root must be a JSON object: {coco_path}",
+                details={"path": str(coco_path)},
+            )
+
+        images = payload.get("images")
+        annotations = payload.get("annotations")
+        if not isinstance(images, list) or not isinstance(annotations, list):
+            raise DatasetValidationError(
+                f"COCO file must contain 'images' and 'annotations' lists: {coco_path}",
+                details={"path": str(coco_path)},
+            )
+
+        image_lookup: dict[Any, Path] = {}
+        for img in images:
+            if not isinstance(img, dict) or "id" not in img or "file_name" not in img:
+                raise DatasetValidationError(
+                    f"COCO image entry missing 'id' or 'file_name': {coco_path}",
+                    details={"path": str(coco_path)},
+                )
+            image_lookup[img["id"]] = self._resolve_image_path(dataset_dir, str(img["file_name"]))
+
+        grouped_annotations: dict[Any, list[dict[str, Any]]] = {
+            img_id: [] for img_id in image_lookup
+        }
+        for ann in annotations:
+            if not isinstance(ann, dict) or "image_id" not in ann or "bbox" not in ann:
+                raise DatasetValidationError(
+                    f"COCO annotation missing 'image_id' or 'bbox': {coco_path}",
+                    details={"path": str(coco_path)},
+                )
+            image_id = ann["image_id"]
+            if image_id not in grouped_annotations:
+                raise DatasetValidationError(
+                    f"COCO annotation references unknown image_id {image_id}: {coco_path}",
+                    details={"path": str(coco_path), "image_id": image_id},
+                )
+            raw_bbox = ann["bbox"]
+            if not isinstance(raw_bbox, list) or len(raw_bbox) != 4:
+                raise DatasetValidationError(
+                    f"COCO bbox must be a 4-element list [x, y, w, h]: {coco_path}",
+                    details={"path": str(coco_path), "bbox": raw_bbox},
+                )
+            try:
+                x_min = float(raw_bbox[0])
+                y_min = float(raw_bbox[1])
+                box_w = float(raw_bbox[2])
+                box_h = float(raw_bbox[3])
+            except (TypeError, ValueError) as exc:
+                raise DatasetValidationError(
+                    f"Non-numeric COCO bbox values in {coco_path}",
+                    details={"path": str(coco_path), "bbox": raw_bbox},
+                ) from exc
+            if box_w <= 0.0 or box_h <= 0.0 or x_min < 0.0 or y_min < 0.0:
+                raise DatasetValidationError(
+                    f"Invalid COCO bbox dimensions in {coco_path}",
+                    details={"path": str(coco_path), "bbox": raw_bbox},
+                )
+
+            attributes = ann.get("attributes")
+            attr_map = attributes if isinstance(attributes, dict) else {}
+            raw_plate = (
+                ann.get("plate_text")
+                or attr_map.get("plate_text")
+                or attr_map.get("text")
+                or self.default_plate_text
+            )
+            raw_country = (
+                ann.get("country_code") or attr_map.get("country_code") or self.default_country_code
+            )
+            entry: dict[str, Any] = {
+                "plate_text": str(raw_plate).strip() or self.default_plate_text,
+                "country_code": str(raw_country).strip().upper() or self.default_country_code,
+                "bbox": {
+                    "x_min": round(x_min, 4),
+                    "y_min": round(y_min, 4),
+                    "x_max": round(x_min + box_w, 4),
+                    "y_max": round(y_min + box_h, 4),
+                    "class_id": int(ann.get("category_id", 0)),
+                },
+            }
+            corners = self._extract_corners(ann)
+            if corners is not None:
+                entry["corners"] = corners
+            grouped_annotations[image_id].append(entry)
+
+        raw_records: list[dict[str, Any]] = []
+        for idx, (image_id, image_path) in enumerate(image_lookup.items()):
+            raw_records.append(
+                {
+                    "record_id": f"{image_path.stem}_{idx:04d}",
+                    "image_path": image_path,
+                    "annotations": grouped_annotations[image_id],
+                    "source_dataset": self.source_dataset,
+                }
+            )
+
+        return ingest_manifest_records(raw_records, config=config)
+
+
 def load_real_dataset(
     dataset_dir: Path,
     fmt: RealDatasetFormat = RealDatasetFormat.JSONL_MANIFEST,
@@ -617,8 +808,10 @@ def load_real_dataset(
         adapter = OpenAlprSidecarAdapter(default_country_code=default_country_code)
     elif fmt == RealDatasetFormat.PASCAL_VOC_XML:
         adapter = PascalVocXmlAdapter(default_country_code=default_country_code)
-    else:
+    elif fmt == RealDatasetFormat.CCPD_FILENAME:
         adapter = CcpdFilenameAdapter(default_country_code=default_country_code)
+    else:
+        adapter = CocoJsonAdapter(default_country_code=default_country_code)
     return adapter.load_records(dataset_dir, active_config)
 
 
@@ -628,6 +821,7 @@ __all__ = [
     "CCPD_PROVINCE_CODES",
     "IMAGE_EXTENSIONS",
     "CcpdFilenameAdapter",
+    "CocoJsonAdapter",
     "JsonlManifestAdapter",
     "OpenAlprSidecarAdapter",
     "PascalVocXmlAdapter",
