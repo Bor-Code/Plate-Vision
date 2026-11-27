@@ -15,6 +15,7 @@ from plate_vision.config.schema import ServingConfig
 from plate_vision.data.profiles import get_country_profile
 from plate_vision.evaluation.monitoring import DriftDetector, DriftReport
 from plate_vision.export.runtime import OnnxDetectorRuntime, OnnxRecognizerRuntime
+from plate_vision.pipeline.rectification import decode_image_to_grayscale
 from plate_vision.pipeline.runner import PipelineInferenceResult, PlateVisionPipeline
 from plate_vision.pipeline.watchlist import WatchlistMatcher
 from plate_vision.serving.metrics import PrometheusMetricsRegistry
@@ -22,8 +23,12 @@ from plate_vision.serving.schemas import (
     AuditLogResponse,
     BatchPredictRequest,
     BatchPredictResponse,
+    CameraTamperAlertsResponse,
+    CameraTamperCheckRequest,
     CorridorCheckpointEventRequest,
     DriftEvaluationRequest,
+    FleetCheckInRequest,
+    FleetCheckOutRequest,
     HealthStatusResponse,
     JourneyQueryRequest,
     LezInspectRequest,
@@ -56,6 +61,12 @@ from plate_vision.video.corridor import (
     CorridorPassageRecord,
     HighwayCorridorMonitor,
 )
+from plate_vision.video.fleet import (
+    FleetCheckInObservation,
+    FleetOperationsSummary,
+    FleetTerminalController,
+    FleetTurnaroundRecord,
+)
 from plate_vision.video.journey import (
     CameraSighting,
     MultiCameraJourneyTracker,
@@ -72,6 +83,7 @@ from plate_vision.video.processor import (
     VideoStreamProcessor,
     VideoStreamSummary,
 )
+from plate_vision.video.tamper import CameraTamperMonitor, FrameHealthAssessment
 
 
 def map_error_to_status_code(exc: PlateVisionError) -> int:
@@ -332,6 +344,8 @@ def create_app(
     corridor_monitor: HighwayCorridorMonitor | None = None,
     lez_inspector: LowEmissionZoneInspector | None = None,
     journey_tracker: MultiCameraJourneyTracker | None = None,
+    tamper_monitor: CameraTamperMonitor | None = None,
+    fleet_controller: FleetTerminalController | None = None,
 ) -> FastAPI:
     active_config = config if config is not None else ServingConfig()
     active_metrics = metrics if metrics is not None else PrometheusMetricsRegistry()
@@ -361,6 +375,8 @@ def create_app(
     active_corridor = corridor_monitor if corridor_monitor is not None else HighwayCorridorMonitor()
     active_lez = lez_inspector if lez_inspector is not None else LowEmissionZoneInspector()
     active_journey = journey_tracker if journey_tracker is not None else MultiCameraJourneyTracker()
+    active_tamper = tamper_monitor if tamper_monitor is not None else CameraTamperMonitor()
+    active_fleet = fleet_controller if fleet_controller is not None else FleetTerminalController()
     active_pipeline = pipeline
 
     app = FastAPI(
@@ -764,6 +780,69 @@ def create_app(
         elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
         active_metrics.record_request("/v1/journey/query", 200, elapsed_ms)
         return report
+
+    @app.post("/v1/camera/tamper/check", response_model=FrameHealthAssessment)
+    async def camera_tamper_check(
+        payload: CameraTamperCheckRequest,
+    ) -> FrameHealthAssessment:
+        start = time.perf_counter()
+        raw_bytes = _decode_base64_payload(
+            payload.image_base64,
+            payload.mime_type,
+            active_config,
+        )
+        grid = decode_image_to_grayscale(
+            raw_bytes,
+            max_payload_bytes=active_config.max_payload_bytes,
+        )
+        if payload.calibrate_reference:
+            active_tamper.calibrate_reference(payload.camera_id, grid)
+        assessment = active_tamper.evaluate_grid(payload.camera_id, grid)
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/camera/tamper/check", 200, elapsed_ms)
+        return assessment
+
+    @app.get("/v1/camera/tamper/alerts", response_model=CameraTamperAlertsResponse)
+    async def camera_tamper_alerts() -> CameraTamperAlertsResponse:
+        alerts = active_tamper.alerted_cameras()
+        active_metrics.record_request("/v1/camera/tamper/alerts", 200, 0.1)
+        return CameraTamperAlertsResponse(alerted_cameras=alerts, count=len(alerts))
+
+    @app.post("/v1/fleet/check-in", response_model=FleetCheckInObservation)
+    async def fleet_check_in(
+        payload: FleetCheckInRequest,
+    ) -> FleetCheckInObservation:
+        start = time.perf_counter()
+        observation = active_fleet.check_in(
+            payload.plate_text,
+            country_code=payload.country_code,
+            carrier_name=payload.carrier_name,
+            assigned_zone=payload.assigned_zone,
+            timestamp_ms=payload.timestamp_ms,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/fleet/check-in", 200, elapsed_ms)
+        return observation
+
+    @app.post("/v1/fleet/check-out", response_model=FleetTurnaroundRecord)
+    async def fleet_check_out(
+        payload: FleetCheckOutRequest,
+    ) -> FleetTurnaroundRecord:
+        start = time.perf_counter()
+        record = active_fleet.check_out(
+            payload.plate_text,
+            country_code=payload.country_code,
+            timestamp_ms=payload.timestamp_ms,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/fleet/check-out", 200, elapsed_ms)
+        return record
+
+    @app.get("/v1/fleet/summary", response_model=FleetOperationsSummary)
+    async def fleet_summary() -> FleetOperationsSummary:
+        summary = active_fleet.summarize()
+        active_metrics.record_request("/v1/fleet/summary", 200, 0.1)
+        return summary
 
     return app
 
