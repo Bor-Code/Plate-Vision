@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from plate_vision.pipeline.runner import PipelineInferenceResult
 from plate_vision.pipeline.watchlist import WatchlistMatch
 from plate_vision.utils.storage import PredictionAuditRecord
+from plate_vision.video.fleet import TerminalZoneType
 from plate_vision.video.parking import ParkingSession
 
 
@@ -132,12 +133,50 @@ class JourneyQueryRequest(BaseModel):
     country_code: str = Field(default="TR", min_length=2)
 
 
+class CameraTamperCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    camera_id: str = Field(min_length=1)
+    image_base64: str = Field(min_length=1)
+    mime_type: str = Field(default="image/png", min_length=1)
+    calibrate_reference: bool = False
+
+
+class CameraTamperAlertsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    alerted_cameras: tuple[str, ...]
+    count: int = Field(ge=0)
+
+
+class FleetCheckInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    carrier_name: str = Field(default="DEFAULT_CARRIER", min_length=1)
+    assigned_zone: TerminalZoneType = TerminalZoneType.LOADING_DOCK
+    timestamp_ms: int = Field(ge=0)
+
+
+class FleetCheckOutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    timestamp_ms: int = Field(ge=0)
+
+
 __all__ = [
     "AuditLogResponse",
     "BatchPredictRequest",
     "BatchPredictResponse",
+    "CameraTamperAlertsResponse",
+    "CameraTamperCheckRequest",
     "CorridorCheckpointEventRequest",
     "DriftEvaluationRequest",
+    "FleetCheckInRequest",
+    "FleetCheckOutRequest",
     "HealthStatusResponse",
     "JourneyQueryRequest",
     "LezInspectRequest",
