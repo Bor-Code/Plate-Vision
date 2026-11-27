@@ -5,12 +5,18 @@ from plate_vision.data.active_learning import (
     SelectionReason,
 )
 from plate_vision.data.adapters import (
+    CCPD_ADS,
+    CCPD_ALPHABETS,
+    CCPD_PROVINCE_CODES,
+    CcpdFilenameAdapter,
     JsonlManifestAdapter,
     OpenAlprSidecarAdapter,
+    PascalVocXmlAdapter,
     RealDatasetAdapterProtocol,
     RealDatasetFormat,
     YoloDirectoryAdapter,
     load_real_dataset,
+    parse_ccpd_filename,
 )
 from plate_vision.data.augmentation import AugmentationConfig, AugmentationPipeline
 from plate_vision.data.deduplication import deduplicate_records
@@ -115,6 +121,9 @@ __all__ = [
     "BELGIUM_PATTERNS",
     "BRAZIL_PATTERNS",
     "CANADA_PATTERNS",
+    "CCPD_ADS",
+    "CCPD_ALPHABETS",
+    "CCPD_PROVINCE_CODES",
     "FRANCE_PATTERNS",
     "GERMANY_PATTERNS",
     "GLYPH_BITMAPS",
@@ -149,6 +158,7 @@ __all__ = [
     "BoundingBox",
     "BrazilCountryProfile",
     "CanadaCountryProfile",
+    "CcpdFilenameAdapter",
     "CountryProfileProtocol",
     "CountryProfileRegistry",
     "DatasetRecord",
@@ -167,6 +177,7 @@ __all__ = [
     "MexicoCountryProfile",
     "NetherlandsCountryProfile",
     "OpenAlprSidecarAdapter",
+    "PascalVocXmlAdapter",
     "PlateAnnotation",
     "PolandCountryProfile",
     "PortugalCountryProfile",
@@ -198,6 +209,7 @@ __all__ = [
     "ingest_manifest_records",
     "inspect_image_bytes",
     "load_real_dataset",
+    "parse_ccpd_filename",
     "parse_jpeg_dimensions",
     "parse_png_dimensions",
     "parse_webp_dimensions",

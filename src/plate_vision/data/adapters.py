@@ -1,4 +1,5 @@
 import json
+import xml.etree.ElementTree as ET
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final, Protocol, runtime_checkable
@@ -9,12 +10,55 @@ from plate_vision.data.models import DatasetRecord
 from plate_vision.utils.exceptions import DataIOError, DatasetValidationError
 
 IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+CCPD_PROVINCE_CODES: Final[tuple[str, ...]] = (
+    "AH",
+    "SH",
+    "TJ",
+    "CQ",
+    "HE",
+    "SX",
+    "NM",
+    "LN",
+    "JL",
+    "HL",
+    "JS",
+    "ZJ",
+    "BJ",
+    "FJ",
+    "JX",
+    "SD",
+    "HA",
+    "HB",
+    "HN",
+    "GD",
+    "GX",
+    "HI",
+    "SC",
+    "GZ",
+    "YN",
+    "XZ",
+    "SN",
+    "GS",
+    "QH",
+    "NX",
+    "XJ",
+    "WJ",
+    "XY",
+    "O",
+)
+CCPD_ALPHABETS: Final[str] = "ABCDEFGHJKLMNPQRSTUVWXYZ0"
+CCPD_ADS: Final[str] = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789O"
+_VOC_GENERIC_LABELS: Final[frozenset[str]] = frozenset(
+    {"plate", "license_plate", "license-plate", "number_plate", "licence"}
+)
 
 
 class RealDatasetFormat(StrEnum):
     JSONL_MANIFEST = "jsonl_manifest"
     YOLO_DIRECTORY = "yolo_directory"
     OPENALPR_SIDECAR = "openalpr_sidecar"
+    PASCAL_VOC_XML = "pascal_voc_xml"
+    CCPD_FILENAME = "ccpd_filename"
 
 
 @runtime_checkable
@@ -39,13 +83,16 @@ def _list_image_files(dataset_dir: Path) -> list[Path]:
     ]
     if direct:
         return direct
-    images_subdir = dataset_dir / "images"
-    if images_subdir.is_dir():
-        return [
-            p
-            for p in sorted(images_subdir.iterdir())
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
-        ]
+    for folder_name in ("images", "JPEGImages"):
+        subdir = dataset_dir / folder_name
+        if subdir.is_dir():
+            files = [
+                p
+                for p in sorted(subdir.iterdir())
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+            ]
+            if files:
+                return files
     return []
 
 
@@ -289,6 +336,271 @@ class OpenAlprSidecarAdapter:
         return ingest_manifest_records(raw_records, config=config)
 
 
+def _parse_ccpd_pair(token: str, source_name: str, field_name: str) -> tuple[float, float]:
+    chunks = token.split("&")
+    if len(chunks) != 2:
+        raise DatasetValidationError(
+            f"Malformed CCPD {field_name} pair '{token}' in {source_name}",
+            details={"filename": source_name, "field": field_name, "token": token},
+        )
+    try:
+        return float(chunks[0]), float(chunks[1])
+    except ValueError as exc:
+        raise DatasetValidationError(
+            f"Non-numeric CCPD {field_name} pair '{token}' in {source_name}",
+            details={"filename": source_name, "field": field_name, "token": token},
+        ) from exc
+
+
+def parse_ccpd_filename(filename: str | Path) -> dict[str, Any]:
+    path = Path(filename)
+    stem = path.stem
+    parts = stem.split("-")
+    if len(parts) != 7:
+        raise DatasetValidationError(
+            f"CCPD filename must have 7 hyphen-separated parts: {path.name}",
+            details={"filename": path.name, "part_count": len(parts)},
+        )
+
+    try:
+        area = float(parts[0])
+        tilt_tokens = parts[1].split("_")
+        if len(tilt_tokens) != 2:
+            raise ValueError("tilt must have 2 parts")
+        tilt = (float(tilt_tokens[0]), float(tilt_tokens[1]))
+        brightness = int(parts[5])
+        blurriness = int(parts[6])
+    except ValueError as exc:
+        raise DatasetValidationError(
+            f"Invalid numeric metadata in CCPD filename: {path.name}",
+            details={"filename": path.name, "reason": str(exc)},
+        ) from exc
+
+    bbox_tokens = parts[2].split("_")
+    if len(bbox_tokens) != 2:
+        raise DatasetValidationError(
+            f"CCPD bbox field must have 2 vertices: {path.name}",
+            details={"filename": path.name, "bbox": parts[2]},
+        )
+    x1, y1 = _parse_ccpd_pair(bbox_tokens[0], path.name, "bbox")
+    x2, y2 = _parse_ccpd_pair(bbox_tokens[1], path.name, "bbox")
+    if x1 < 0.0 or y1 < 0.0 or x2 <= x1 or y2 <= y1:
+        raise DatasetValidationError(
+            f"Invalid CCPD bounding box coordinates in {path.name}",
+            details={"filename": path.name, "bbox": [x1, y1, x2, y2]},
+        )
+
+    vertex_tokens = parts[3].split("_")
+    if len(vertex_tokens) != 4:
+        raise DatasetValidationError(
+            f"CCPD vertices field must have 4 corners: {path.name}",
+            details={"filename": path.name, "vertices": parts[3]},
+        )
+    br = _parse_ccpd_pair(vertex_tokens[0], path.name, "vertex")
+    bl = _parse_ccpd_pair(vertex_tokens[1], path.name, "vertex")
+    tl = _parse_ccpd_pair(vertex_tokens[2], path.name, "vertex")
+    tr = _parse_ccpd_pair(vertex_tokens[3], path.name, "vertex")
+
+    char_tokens = parts[4].split("_")
+    if len(char_tokens) < 7:
+        raise DatasetValidationError(
+            f"CCPD plate code must have at least 7 character indices: {path.name}",
+            details={"filename": path.name, "plate_indices": parts[4]},
+        )
+    try:
+        char_indices = [int(item) for item in char_tokens]
+    except ValueError as exc:
+        raise DatasetValidationError(
+            f"Non-integer CCPD character index in {path.name}",
+            details={"filename": path.name, "plate_indices": parts[4]},
+        ) from exc
+
+    province_idx = char_indices[0]
+    alpha_idx = char_indices[1]
+    if not (0 <= province_idx < len(CCPD_PROVINCE_CODES)):
+        raise DatasetValidationError(
+            f"CCPD province index out of range in {path.name}: {province_idx}",
+            details={"filename": path.name, "province_idx": province_idx},
+        )
+    if not (0 <= alpha_idx < len(CCPD_ALPHABETS)):
+        raise DatasetValidationError(
+            f"CCPD alphabet index out of range in {path.name}: {alpha_idx}",
+            details={"filename": path.name, "alpha_idx": alpha_idx},
+        )
+
+    chars: list[str] = [CCPD_PROVINCE_CODES[province_idx], CCPD_ALPHABETS[alpha_idx]]
+    for ad_idx in char_indices[2:]:
+        if not (0 <= ad_idx < len(CCPD_ADS)):
+            raise DatasetValidationError(
+                f"CCPD character index out of range in {path.name}: {ad_idx}",
+                details={"filename": path.name, "ad_idx": ad_idx},
+            )
+        chars.append(CCPD_ADS[ad_idx])
+
+    return {
+        "plate_text": "".join(chars),
+        "bbox": {
+            "x_min": round(x1, 4),
+            "y_min": round(y1, 4),
+            "x_max": round(x2, 4),
+            "y_max": round(y2, 4),
+            "class_id": 0,
+        },
+        "corners": (tl, tr, br, bl),
+        "area": area,
+        "tilt": tilt,
+        "brightness": brightness,
+        "blurriness": blurriness,
+    }
+
+
+class PascalVocXmlAdapter:
+    def __init__(
+        self,
+        default_country_code: str = "TR",
+        annotations_dirname: str = "annotations",
+        source_dataset: str = "real_pascal_voc",
+        default_plate_text: str = "UNKNOWN",
+    ) -> None:
+        self.default_country_code = default_country_code.strip().upper()
+        self.annotations_dirname = annotations_dirname
+        self.source_dataset = source_dataset
+        self.default_plate_text = default_plate_text
+
+    def _find_xml_file(self, dataset_dir: Path, image_path: Path) -> Path | None:
+        candidates = (
+            image_path.with_suffix(".xml"),
+            dataset_dir / self.annotations_dirname / f"{image_path.stem}.xml",
+            dataset_dir / "Annotations" / f"{image_path.stem}.xml",
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def load_records(
+        self,
+        dataset_dir: Path,
+        config: DataConfig,
+    ) -> list[DatasetRecord]:
+        image_files = _list_image_files(dataset_dir)
+        raw_records: list[dict[str, Any]] = []
+
+        for idx, image_path in enumerate(image_files):
+            xml_path = self._find_xml_file(dataset_dir, image_path)
+            if xml_path is None:
+                continue
+            try:
+                xml_content = xml_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise DataIOError(
+                    f"Failed to read Pascal VOC XML file: {xml_path}",
+                    details={"path": str(xml_path), "reason": str(exc)},
+                ) from exc
+
+            try:
+                root = ET.fromstring(xml_content)
+            except ET.ParseError as exc:
+                raise DatasetValidationError(
+                    f"Malformed Pascal VOC XML file: {xml_path}",
+                    details={"path": str(xml_path), "reason": str(exc)},
+                ) from exc
+
+            annotations: list[dict[str, Any]] = []
+            for obj in root.findall("object"):
+                bndbox = obj.find("bndbox")
+                if bndbox is None:
+                    raise DatasetValidationError(
+                        f"VOC <object> missing <bndbox> in {xml_path}",
+                        details={"path": str(xml_path)},
+                    )
+                try:
+                    x_min = float(bndbox.findtext("xmin", "").strip())
+                    y_min = float(bndbox.findtext("ymin", "").strip())
+                    x_max = float(bndbox.findtext("xmax", "").strip())
+                    y_max = float(bndbox.findtext("ymax", "").strip())
+                except ValueError as exc:
+                    raise DatasetValidationError(
+                        f"Invalid <bndbox> coordinates in {xml_path}",
+                        details={"path": str(xml_path), "reason": str(exc)},
+                    ) from exc
+
+                explicit_text = (obj.findtext("plate_text") or obj.findtext("text") or "").strip()
+                if explicit_text:
+                    plate_text = explicit_text
+                else:
+                    label_name = (obj.findtext("name") or "").strip()
+                    plate_text = (
+                        self.default_plate_text
+                        if not label_name or label_name.lower() in _VOC_GENERIC_LABELS
+                        else label_name
+                    )
+
+                country_text = (obj.findtext("country_code") or "").strip().upper()
+                annotations.append(
+                    {
+                        "plate_text": plate_text,
+                        "country_code": country_text or self.default_country_code,
+                        "bbox": {
+                            "x_min": round(x_min, 4),
+                            "y_min": round(y_min, 4),
+                            "x_max": round(x_max, 4),
+                            "y_max": round(y_max, 4),
+                            "class_id": 0,
+                        },
+                    }
+                )
+
+            raw_records.append(
+                {
+                    "record_id": f"{image_path.stem}_{idx:04d}",
+                    "image_path": image_path,
+                    "annotations": annotations,
+                    "source_dataset": self.source_dataset,
+                }
+            )
+
+        return ingest_manifest_records(raw_records, config=config)
+
+
+class CcpdFilenameAdapter:
+    def __init__(
+        self,
+        default_country_code: str = "CN",
+        source_dataset: str = "real_ccpd",
+    ) -> None:
+        self.default_country_code = default_country_code.strip().upper()
+        self.source_dataset = source_dataset
+
+    def load_records(
+        self,
+        dataset_dir: Path,
+        config: DataConfig,
+    ) -> list[DatasetRecord]:
+        image_files = _list_image_files(dataset_dir)
+        raw_records: list[dict[str, Any]] = []
+
+        for idx, image_path in enumerate(image_files):
+            parsed = parse_ccpd_filename(image_path)
+            raw_records.append(
+                {
+                    "record_id": f"{image_path.stem}_{idx:04d}",
+                    "image_path": image_path,
+                    "annotations": [
+                        {
+                            "plate_text": parsed["plate_text"],
+                            "country_code": self.default_country_code,
+                            "bbox": parsed["bbox"],
+                            "corners": parsed["corners"],
+                        }
+                    ],
+                    "source_dataset": self.source_dataset,
+                }
+            )
+
+        return ingest_manifest_records(raw_records, config=config)
+
+
 def load_real_dataset(
     dataset_dir: Path,
     fmt: RealDatasetFormat = RealDatasetFormat.JSONL_MANIFEST,
@@ -301,17 +613,27 @@ def load_real_dataset(
         adapter: RealDatasetAdapterProtocol = JsonlManifestAdapter()
     elif fmt == RealDatasetFormat.YOLO_DIRECTORY:
         adapter = YoloDirectoryAdapter(default_country_code=default_country_code)
-    else:
+    elif fmt == RealDatasetFormat.OPENALPR_SIDECAR:
         adapter = OpenAlprSidecarAdapter(default_country_code=default_country_code)
+    elif fmt == RealDatasetFormat.PASCAL_VOC_XML:
+        adapter = PascalVocXmlAdapter(default_country_code=default_country_code)
+    else:
+        adapter = CcpdFilenameAdapter(default_country_code=default_country_code)
     return adapter.load_records(dataset_dir, active_config)
 
 
 __all__ = [
+    "CCPD_ADS",
+    "CCPD_ALPHABETS",
+    "CCPD_PROVINCE_CODES",
     "IMAGE_EXTENSIONS",
+    "CcpdFilenameAdapter",
     "JsonlManifestAdapter",
     "OpenAlprSidecarAdapter",
+    "PascalVocXmlAdapter",
     "RealDatasetAdapterProtocol",
     "RealDatasetFormat",
     "YoloDirectoryAdapter",
     "load_real_dataset",
+    "parse_ccpd_filename",
 ]
