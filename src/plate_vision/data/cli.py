@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any
 from plate_vision.config.schema import DatasetSplitRatios
 from plate_vision.data.adapters import RealDatasetFormat, load_real_dataset
 from plate_vision.data.deduplication import deduplicate_records
-from plate_vision.data.exporters import export_recognizer_manifests, export_yolo_dataset
+from plate_vision.data.exporters import (
+    export_coco_dataset,
+    export_pascal_voc_dataset,
+    export_recognizer_manifests,
+    export_yolo_dataset,
+)
 from plate_vision.data.profiles import get_country_profile
 from plate_vision.data.splitter import stratified_split
 from plate_vision.data.synthetic import SyntheticPlateConfig, generate_synthetic_dataset
@@ -59,6 +64,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=42,
         help="Deterministic random seed",
+    )
+    parser.add_argument(
+        "--export-coco",
+        action="store_true",
+        help="Export COCO JSON split manifests alongside YOLO and recognizer manifests",
+    )
+    parser.add_argument(
+        "--export-voc",
+        action="store_true",
+        help="Export Pascal VOC XML annotations alongside YOLO and recognizer manifests",
     )
     return parser.parse_args(list(argv) if argv is not None else None)
 
@@ -119,6 +134,12 @@ def run_prepare_dataset(args: argparse.Namespace) -> dict[str, Any]:
         "yolo_dataset_yaml": str(yolo_yaml),
         "recognizer_manifests": {split.value: str(path) for split, path in manifests.items()},
     }
+    if bool(getattr(args, "export_coco", False)):
+        coco_paths = export_coco_dataset(split_ds, output_dir / "coco")
+        summary["coco_manifests"] = {split.value: str(path) for split, path in coco_paths.items()}
+    if bool(getattr(args, "export_voc", False)):
+        voc_paths = export_pascal_voc_dataset(split_ds, output_dir / "voc")
+        summary["voc_xml_counts"] = {split.value: len(paths) for split, paths in voc_paths.items()}
     summary_path = output_dir / "dataset_summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
