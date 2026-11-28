@@ -21,7 +21,12 @@ from plate_vision.data.adapters import (
 )
 from plate_vision.data.augmentation import AugmentationConfig, AugmentationPipeline
 from plate_vision.data.deduplication import deduplicate_records
-from plate_vision.data.exporters import export_recognizer_manifests, export_yolo_dataset
+from plate_vision.data.exporters import (
+    export_coco_dataset,
+    export_pascal_voc_dataset,
+    export_recognizer_manifests,
+    export_yolo_dataset,
+)
 from plate_vision.data.ingestion import (
     LocalFileStorage,
     derive_stratum_key,
@@ -219,6 +224,8 @@ __all__ = [
     "deduplicate_records",
     "derive_stratum_key",
     "encode_grayscale_png",
+    "export_coco_dataset",
+    "export_pascal_voc_dataset",
     "export_recognizer_manifests",
     "export_yolo_dataset",
     "generate_synthetic_dataset",
