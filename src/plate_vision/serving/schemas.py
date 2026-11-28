@@ -7,6 +7,7 @@ from plate_vision.pipeline.watchlist import WatchlistMatch
 from plate_vision.utils.storage import PredictionAuditRecord
 from plate_vision.video.fleet import TerminalZoneType
 from plate_vision.video.parking import ParkingSession
+from plate_vision.video.toll import VehicleTollClass
 
 
 class SinglePredictRequest(BaseModel):
@@ -167,6 +168,34 @@ class FleetCheckOutRequest(BaseModel):
     timestamp_ms: int = Field(ge=0)
 
 
+class TollAccountRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    vehicle_class: VehicleTollClass = VehicleTollClass.PASSENGER
+    balance: float = Field(default=0.0, ge=0.0)
+    postpaid_enabled: bool = False
+    is_exempt: bool = False
+
+
+class TollTopUpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    amount: float = Field(gt=0.0)
+
+
+class TollPassageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plate_text: str = Field(min_length=1)
+    country_code: str = Field(default="TR", min_length=2)
+    timestamp_ms: int = Field(ge=0)
+    vehicle_class: VehicleTollClass | None = None
+
+
 __all__ = [
     "AuditLogResponse",
     "BatchPredictRequest",
@@ -185,6 +214,9 @@ __all__ = [
     "ReadinessStatusResponse",
     "SinglePredictRequest",
     "StructuredErrorResponse",
+    "TollAccountRegisterRequest",
+    "TollPassageRequest",
+    "TollTopUpRequest",
     "VideoPredictRequest",
     "WatchlistCheckRequest",
     "WatchlistCheckResponse",

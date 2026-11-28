@@ -37,6 +37,9 @@ from plate_vision.serving.schemas import (
     ReadinessStatusResponse,
     SinglePredictRequest,
     StructuredErrorResponse,
+    TollAccountRegisterRequest,
+    TollPassageRequest,
+    TollTopUpRequest,
     VideoPredictRequest,
     WatchlistCheckRequest,
     WatchlistCheckResponse,
@@ -84,6 +87,12 @@ from plate_vision.video.processor import (
     VideoStreamSummary,
 )
 from plate_vision.video.tamper import CameraTamperMonitor, FrameHealthAssessment
+from plate_vision.video.toll import (
+    TollAccount,
+    TollCollectionSummary,
+    TollGantryEngine,
+    TollTransaction,
+)
 
 
 def map_error_to_status_code(exc: PlateVisionError) -> int:
@@ -346,6 +355,7 @@ def create_app(
     journey_tracker: MultiCameraJourneyTracker | None = None,
     tamper_monitor: CameraTamperMonitor | None = None,
     fleet_controller: FleetTerminalController | None = None,
+    toll_engine: TollGantryEngine | None = None,
 ) -> FastAPI:
     active_config = config if config is not None else ServingConfig()
     active_metrics = metrics if metrics is not None else PrometheusMetricsRegistry()
@@ -377,6 +387,7 @@ def create_app(
     active_journey = journey_tracker if journey_tracker is not None else MultiCameraJourneyTracker()
     active_tamper = tamper_monitor if tamper_monitor is not None else CameraTamperMonitor()
     active_fleet = fleet_controller if fleet_controller is not None else FleetTerminalController()
+    active_toll = toll_engine if toll_engine is not None else TollGantryEngine()
     active_pipeline = pipeline
 
     app = FastAPI(
@@ -842,6 +853,60 @@ def create_app(
     async def fleet_summary() -> FleetOperationsSummary:
         summary = active_fleet.summarize()
         active_metrics.record_request("/v1/fleet/summary", 200, 0.1)
+        return summary
+
+    @app.post("/v1/toll/account", response_model=TollAccount)
+    async def toll_register_account(
+        payload: TollAccountRegisterRequest,
+    ) -> TollAccount:
+        start = time.perf_counter()
+        account = active_toll.register_account(
+            TollAccount(
+                plate_text=payload.plate_text,
+                country_code=payload.country_code,
+                vehicle_class=payload.vehicle_class,
+                balance=payload.balance,
+                postpaid_enabled=payload.postpaid_enabled,
+                is_exempt=payload.is_exempt,
+            )
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/toll/account", 200, elapsed_ms)
+        return account
+
+    @app.post("/v1/toll/top-up", response_model=TollAccount)
+    async def toll_top_up(
+        payload: TollTopUpRequest,
+    ) -> TollAccount:
+        start = time.perf_counter()
+        updated = active_toll.top_up_account(
+            payload.plate_text,
+            payload.amount,
+            country_code=payload.country_code,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/toll/top-up", 200, elapsed_ms)
+        return updated
+
+    @app.post("/v1/toll/passage", response_model=TollTransaction)
+    async def toll_process_passage(
+        payload: TollPassageRequest,
+    ) -> TollTransaction:
+        start = time.perf_counter()
+        transaction = active_toll.process_passage(
+            payload.plate_text,
+            timestamp_ms=payload.timestamp_ms,
+            country_code=payload.country_code,
+            vehicle_class=payload.vehicle_class,
+        )
+        elapsed_ms = max(0.0, (time.perf_counter() - start) * 1000.0)
+        active_metrics.record_request("/v1/toll/passage", 200, elapsed_ms)
+        return transaction
+
+    @app.get("/v1/toll/summary", response_model=TollCollectionSummary)
+    async def toll_summary() -> TollCollectionSummary:
+        summary = active_toll.summary()
+        active_metrics.record_request("/v1/toll/summary", 200, 0.1)
         return summary
 
     return app
